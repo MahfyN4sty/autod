@@ -25,6 +25,8 @@ local isMinigameActive = false
 local isCasting = false
 local clickConnection = nil
 local lastCastTime = 0
+local fishCaught = 0 -- Counter ikan tertangkap
+local wasMinigameActive = false -- Track minigame state
 
 -- Performance Monitoring
 local currentFPS = 0
@@ -124,6 +126,14 @@ local function startAutoClick()
         end
         
         local active, filler = detectMinigame()
+        
+        -- Deteksi fish caught (minigame selesai)
+        if wasMinigameActive and not active then
+            fishCaught = fishCaught + 1
+            print("🐟 Fish caught! Total:", fishCaught)
+        end
+        
+        wasMinigameActive = active
         isMinigameActive = active
         
         if active and filler then
@@ -233,7 +243,7 @@ local function createControlPanel()
     
     local frame = Instance.new("Frame")
     frame.Name = "MainFrame"
-    frame.Size = UDim2.new(0, 250, 0, 260)
+    frame.Size = UDim2.new(0, 250, 0, 290)
     frame.Position = UDim2.new(0.85, 0, 0.3, 0)
     frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     frame.BorderSizePixel = 0
@@ -333,11 +343,34 @@ local function createControlPanel()
     modeBtnCorner.CornerRadius = UDim.new(0, 6)
     modeBtnCorner.Parent = modeBtn
     
+    -- Fish Counter Display
+    local fishCounterFrame = Instance.new("Frame")
+    fishCounterFrame.Name = "FishCounter"
+    fishCounterFrame.Size = UDim2.new(0.9, 0, 0, 30)
+    fishCounterFrame.Position = UDim2.new(0.05, 0, 0, 155)
+    fishCounterFrame.BackgroundColor3 = Color3.fromRGB(0, 150, 100)
+    fishCounterFrame.BorderSizePixel = 0
+    fishCounterFrame.Parent = frame
+    
+    local fishCounterCorner = Instance.new("UICorner")
+    fishCounterCorner.CornerRadius = UDim.new(0, 8)
+    fishCounterCorner.Parent = fishCounterFrame
+    
+    local fishCounterLabel = Instance.new("TextLabel")
+    fishCounterLabel.Name = "CounterLabel"
+    fishCounterLabel.Size = UDim2.new(1, 0, 1, 0)
+    fishCounterLabel.BackgroundTransparency = 1
+    fishCounterLabel.Text = "🐟 Fish Caught: 0"
+    fishCounterLabel.Font = Enum.Font.GothamBold
+    fishCounterLabel.TextSize = 13
+    fishCounterLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    fishCounterLabel.Parent = fishCounterFrame
+    
     -- Performance Stats Box
     local statsBox = Instance.new("Frame")
     statsBox.Name = "StatsBox"
     statsBox.Size = UDim2.new(0.9, 0, 0, 80)
-    statsBox.Position = UDim2.new(0.05, 0, 0, 165)
+    statsBox.Position = UDim2.new(0.05, 0, 0, 195)
     statsBox.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
     statsBox.BackgroundTransparency = 0.3
     statsBox.BorderSizePixel = 0
@@ -401,6 +434,9 @@ local function createControlPanel()
     task.spawn(function()
         while statsBox and statsBox.Parent do
             task.wait(0.5)
+            
+            -- Update Fish Counter
+            fishCounterLabel.Text = "🐟 Fish Caught: " .. fishCaught
             
             -- Update FPS
             local fpsColor = Color3.fromRGB(0, 255, 150)
