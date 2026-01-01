@@ -1,5 +1,4 @@
 -- Auto Fishing Script
--- Disclaimer: Penggunaan script ini dapat melanggar ToS Roblox
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
