@@ -17,7 +17,8 @@ local config = {
     smartClick = true,
     autoRecast = true,
     castHoldTime = 0.6,
-    enabled = false
+    enabled = false,
+    autoWinMode = false -- Mode baru: Auto win tanpa tap
 }
 
 -- Status
@@ -119,7 +120,7 @@ local function startAutoClick()
     end
     
     clickConnection = RunService.Heartbeat:Connect(function()
-        if not config.enabled or not config.autoClick or isCasting then
+        if not config.enabled or isCasting then
             return
         end
         
@@ -127,14 +128,24 @@ local function startAutoClick()
         isMinigameActive = active
         
         if active and filler then
-            if config.smartClick then
-                if filler.Size.X.Scale < 1 then
-                    quickTap()
-                    task.wait(config.clickDelay)
-                end
+            -- Mode 1: Auto Win (Langsung set bar penuh)
+            if config.autoWinMode then
+                filler.Size = UDim2.new(1, 0, 1, 0)
+                task.wait(0.1)
+                -- Tunggu game mendeteksi kemenangan
             else
-                quickTap()
-                task.wait(config.clickDelay)
+                -- Mode 2: Normal tap-tap
+                if config.autoClick then
+                    if config.smartClick then
+                        if filler.Size.X.Scale < 1 then
+                            quickTap()
+                            task.wait(config.clickDelay)
+                        end
+                    else
+                        quickTap()
+                        task.wait(config.clickDelay)
+                    end
+                end
             end
         end
     end)
@@ -217,7 +228,7 @@ local function createControlPanel()
     
     local frame = Instance.new("Frame")
     frame.Name = "MainFrame"
-    frame.Size = UDim2.new(0, 250, 0, 230)
+    frame.Size = UDim2.new(0, 250, 0, 260)
     frame.Position = UDim2.new(0.85, 0, 0.3, 0)
     frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     frame.BorderSizePixel = 0
@@ -301,11 +312,27 @@ local function createControlPanel()
     statusLabel.TextXAlignment = Enum.TextXAlignment.Left
     statusLabel.Parent = frame
     
+    -- Mode Toggle Button
+    local modeBtn = Instance.new("TextButton")
+    modeBtn.Name = "ModeBtn"
+    modeBtn.Size = UDim2.new(0.9, 0, 0, 25)
+    modeBtn.Position = UDim2.new(0.05, 0, 0, 125)
+    modeBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 255)
+    modeBtn.Text = "Mode: Tap-Tap"
+    modeBtn.Font = Enum.Font.GothamBold
+    modeBtn.TextSize = 11
+    modeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    modeBtn.Parent = frame
+    
+    local modeBtnCorner = Instance.new("UICorner")
+    modeBtnCorner.CornerRadius = UDim.new(0, 6)
+    modeBtnCorner.Parent = modeBtn
+    
     -- Performance Stats Box
     local statsBox = Instance.new("Frame")
     statsBox.Name = "StatsBox"
     statsBox.Size = UDim2.new(0.9, 0, 0, 80)
-    statsBox.Position = UDim2.new(0.05, 0, 0, 135)
+    statsBox.Position = UDim2.new(0.05, 0, 0, 165)
     statsBox.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
     statsBox.BackgroundTransparency = 0.3
     statsBox.BorderSizePixel = 0
@@ -410,6 +437,19 @@ local function createControlPanel()
     -- Toggle functionality
     local isMinimized = false
     
+    -- Mode Toggle
+    modeBtn.MouseButton1Click:Connect(function()
+        config.autoWinMode = not config.autoWinMode
+        
+        if config.autoWinMode then
+            modeBtn.Text = "Mode: Auto Win 🚀"
+            modeBtn.BackgroundColor3 = Color3.fromRGB(255, 100, 0)
+        else
+            modeBtn.Text = "Mode: Tap-Tap 🎮"
+            modeBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 255)
+        end
+    end)
+    
     minimizeBtn.MouseButton1Click:Connect(function()
         isMinimized = not isMinimized
         
@@ -419,13 +459,15 @@ local function createControlPanel()
             minimizeBtn.Text = "□"
             toggleBtn.Visible = false
             statusLabel.Visible = false
+            modeBtn.Visible = false
             statsBox.Visible = false
         else
             -- Restore
-            frame:TweenSize(UDim2.new(0, 250, 0, 230), "Out", "Quad", 0.3, true)
+            frame:TweenSize(UDim2.new(0, 250, 0, 260), "Out", "Quad", 0.3, true)
             minimizeBtn.Text = "—"
             toggleBtn.Visible = true
             statusLabel.Visible = true
+            modeBtn.Visible = true
             statsBox.Visible = true
         end
     end)
