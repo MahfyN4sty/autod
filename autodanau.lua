@@ -240,6 +240,7 @@ local function createControlPanel()
     screenGui.Name = "AutoFishingGUI"
     screenGui.ResetOnSpawn = false
     screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    screenGui.IgnoreGuiInset = true -- Penting untuk mobile compatibility
     
     local frame = Instance.new("Frame")
     frame.Name = "MainFrame"
@@ -495,21 +496,13 @@ local function createControlPanel()
         isMinimized = not isMinimized
         
         if isMinimized then
-            -- Minimize
-            frame:TweenSize(UDim2.new(0, 250, 0, 30), "Out", "Quad", 0.3, true)
-            minimizeBtn.Text = "□"
-            toggleBtn.Visible = false
-            statusLabel.Visible = false
-            modeBtn.Visible = false
-            statsBox.Visible = false
+            -- Minimize - Sembunyikan semua UI
+            frame.Visible = false
+            print("📦 GUI Minimized - Press 'J' to restore")
         else
             -- Restore
-            frame:TweenSize(UDim2.new(0, 250, 0, 260), "Out", "Quad", 0.3, true)
-            minimizeBtn.Text = "—"
-            toggleBtn.Visible = true
-            statusLabel.Visible = true
-            modeBtn.Visible = true
-            statsBox.Visible = true
+            frame.Visible = true
+            print("📂 GUI Restored")
         end
     end)
     
@@ -531,6 +524,11 @@ local function createControlPanel()
         config.enabled = not config.enabled
         
         if config.enabled then
+            -- Reset fish counter saat enable
+            fishCaught = 0
+            wasMinigameActive = false
+            fishCounterLabel.Text = "🐟 Fish Caught: 0"
+            
             toggleBtn.BackgroundColor3 = Color3.fromRGB(50, 220, 50)
             toggleBtn.Text = "▶ ENABLED"
             statusLabel.Text = "Status: Running..."
@@ -584,13 +582,44 @@ local function createControlPanel()
     end)
     
     screenGui.Parent = playerGui
+    
+    -- Hotkey "J" untuk toggle visibility (FIXED)
+    local UserInputService = game:GetService("UserInputService")
+    
+    local hotkeyConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        -- Jangan cek gameProcessed agar bisa dipanggil kapan saja
+        if input.KeyCode == Enum.KeyCode.J then
+            if screenGui and screenGui.Parent then
+                frame.Visible = not frame.Visible
+                isMinimized = not frame.Visible
+                
+                if frame.Visible then
+                    print("📂 [J] GUI Opened")
+                else
+                    print("📦 [J] GUI Hidden")
+                end
+            end
+        end
+    end)
+    
+    -- Cleanup saat GUI dihapus
+    screenGui.Destroying:Connect(function()
+        if hotkeyConnection then
+            hotkeyConnection:Disconnect()
+        end
+    end)
+    
     print("🎣 Auto Fishing Script Loaded!")
     print("✅ Performance Monitor Active")
+    print("🐟 Fish Counter Active")
+    print("⌨️  Press 'J' to toggle GUI visibility")
     print("▶ Tekan tombol ENABLED untuk memulai")
+    
+    return screenGui
 end
 
 -- Initialize
 task.wait(1)
 startFPSCounter()
 updatePing()
-createControlPanel()
+local mainGui = createControlPanel()
