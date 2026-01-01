@@ -127,11 +127,17 @@ local function startAutoClick()
         isMinigameActive = active
         
         if active and filler then
-            -- Mode 1: Auto Win (Langsung set bar penuh)
+            -- Mode 1: Auto Win (Set bar penuh + 1 klik trigger)
             if config.autoWinMode then
-                filler.Size = UDim2.new(1, 0, 1, 0)
-                task.wait(0.1)
-                -- Tunggu game mendeteksi kemenangan
+                if filler.Size.X.Scale < 0.99 then
+                    -- Set bar hampir penuh
+                    filler.Size = UDim2.new(0.99, 0, 1, 0)
+                    task.wait(0.05)
+                    -- 1x klik untuk trigger win
+                    quickTap()
+                    print("🎣 Auto Win: Bar full + trigger click")
+                    task.wait(0.5) -- Cooldown
+                end
             else
                 -- Mode 2: Normal tap-tap
                 if config.autoClick then
