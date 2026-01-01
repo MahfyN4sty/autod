@@ -1,4 +1,5 @@
 -- Auto Fishing Script
+-- Disclaimer: Penggunaan script ini dapat melanggar ToS Roblox
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -228,7 +229,7 @@ local function createControlPanel()
     
     -- Title
     local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(1, 0, 0, 30)
+    title.Size = UDim2.new(1, -60, 0, 30)
     title.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
     title.BorderSizePixel = 0
     title.Text = "🎣 Auto Fishing"
@@ -240,6 +241,38 @@ local function createControlPanel()
     local titleCorner = Instance.new("UICorner")
     titleCorner.CornerRadius = UDim.new(0, 10)
     titleCorner.Parent = title
+    
+    -- Minimize Button
+    local minimizeBtn = Instance.new("TextButton")
+    minimizeBtn.Name = "MinimizeBtn"
+    minimizeBtn.Size = UDim2.new(0, 25, 0, 25)
+    minimizeBtn.Position = UDim2.new(1, -55, 0, 2.5)
+    minimizeBtn.BackgroundColor3 = Color3.fromRGB(255, 200, 0)
+    minimizeBtn.Text = "—"
+    minimizeBtn.Font = Enum.Font.GothamBold
+    minimizeBtn.TextSize = 14
+    minimizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    minimizeBtn.Parent = frame
+    
+    local minimizeCorner = Instance.new("UICorner")
+    minimizeCorner.CornerRadius = UDim.new(0, 6)
+    minimizeCorner.Parent = minimizeBtn
+    
+    -- Close Button
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Name = "CloseBtn"
+    closeBtn.Size = UDim2.new(0, 25, 0, 25)
+    closeBtn.Position = UDim2.new(1, -27.5, 0, 2.5)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+    closeBtn.Text = "✕"
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.TextSize = 14
+    closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeBtn.Parent = frame
+    
+    local closeCorner = Instance.new("UICorner")
+    closeCorner.CornerRadius = UDim.new(0, 6)
+    closeCorner.Parent = closeBtn
     
     -- Toggle Button
     local toggleBtn = Instance.new("TextButton")
@@ -375,6 +408,42 @@ local function createControlPanel()
     end)
     
     -- Toggle functionality
+    local isMinimized = false
+    
+    minimizeBtn.MouseButton1Click:Connect(function()
+        isMinimized = not isMinimized
+        
+        if isMinimized then
+            -- Minimize
+            frame:TweenSize(UDim2.new(0, 250, 0, 30), "Out", "Quad", 0.3, true)
+            minimizeBtn.Text = "□"
+            toggleBtn.Visible = false
+            statusLabel.Visible = false
+            statsBox.Visible = false
+        else
+            -- Restore
+            frame:TweenSize(UDim2.new(0, 250, 0, 230), "Out", "Quad", 0.3, true)
+            minimizeBtn.Text = "—"
+            toggleBtn.Visible = true
+            statusLabel.Visible = true
+            statsBox.Visible = true
+        end
+    end)
+    
+    closeBtn.MouseButton1Click:Connect(function()
+        -- Stop all processes
+        config.enabled = false
+        if clickConnection then
+            clickConnection:Disconnect()
+        end
+        
+        -- Animate out
+        frame:TweenSize(UDim2.new(0, 0, 0, 0), "In", "Back", 0.3, true)
+        task.wait(0.3)
+        screenGui:Destroy()
+        print("❌ Auto Fishing Script Closed")
+    end)
+    
     toggleBtn.MouseButton1Click:Connect(function()
         config.enabled = not config.enabled
         
