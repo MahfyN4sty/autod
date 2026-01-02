@@ -1,5 +1,4 @@
 -- Auto Fishing Script
--- Disclaimer: Penggunaan script ini dapat melanggar ToS Roblox
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -38,6 +37,8 @@ local packetLoss = 0
 local frameCount = 0
 local lastFPSUpdate = tick()
 local scriptStartTime = tick()
+local enabledStartTime = 0 -- Waktu saat script di-enable
+local totalEnabledTime = 0 -- Total waktu script enabled
 
 -- Fungsi untuk hold click (cast fishing rod)
 local function holdClick(duration)
@@ -503,23 +504,28 @@ local function createControlPanel()
             connectionLabel.Text = "Status: " .. connectionStatus
             connectionLabel.TextColor3 = statusColor
             
-            local uptime = math.floor(tick() - scriptStartTime)
+            -- Update Uptime (HANYA saat enabled)
+            local uptime = 0
+            if config.enabled then
+                -- Saat enabled: hitung dari waktu enable + total waktu sebelumnya
+                uptime = math.floor(tick() - enabledStartTime + totalEnabledTime)
+                uptimeLabel.TextColor3 = Color3.fromRGB(0, 255, 150) -- Hijau saat aktif
+            else
+                -- Saat disabled: tampilkan total waktu yang sudah terakumulasi
+                uptime = math.floor(totalEnabledTime)
+                uptimeLabel.TextColor3 = Color3.fromRGB(150, 150, 150) -- Abu-abu saat idle
+            end
+            
             local hours = math.floor(uptime / 3600)
             local minutes = math.floor((uptime % 3600) / 60)
             local seconds = uptime % 60
             
             if hours > 0 then
-                uptimeLabel.Text = string.format("Uptime: %dh %dm %ds", hours, minutes, seconds)
+                uptimeLabel.Text = string.format("⏱️ Uptime: %dh %dm %ds", hours, minutes, seconds)
             elseif minutes > 0 then
-                uptimeLabel.Text = string.format("Uptime: %dm %ds", minutes, seconds)
+                uptimeLabel.Text = string.format("⏱️ Uptime: %dm %ds", minutes, seconds)
             else
-                uptimeLabel.Text = string.format("Uptime: %ds", seconds)
-            end
-            
-            if config.enabled then
-                uptimeLabel.TextColor3 = Color3.fromRGB(0, 255, 150)
-            else
-                uptimeLabel.TextColor3 = Color3.fromRGB(150, 150, 255)
+                uptimeLabel.Text = string.format("⏱️ Uptime: %ds", seconds)
             end
         end
     end)
@@ -559,9 +565,14 @@ local function createControlPanel()
         config.enabled = not config.enabled
         
         if config.enabled then
+            -- Reset fish counter dan start uptime timer
             fishCaught = 0
             wasMinigameActive = false
             fishCounterLabel.Text = "🐟 Fish Caught: 0"
+            
+            -- Start uptime dari 0
+            enabledStartTime = tick()
+            totalEnabledTime = 0
             
             toggleBtn.BackgroundColor3 = Color3.fromRGB(50, 220, 50)
             toggleBtn.Text = "▶ ENABLED"
@@ -574,6 +585,9 @@ local function createControlPanel()
             task.wait(0.5)
             castFishingRod()
         else
+            -- Stop dan simpan total waktu enabled
+            totalEnabledTime = totalEnabledTime + (tick() - enabledStartTime)
+            
             toggleBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
             toggleBtn.Text = "⏹ DISABLED"
             statusLabel.Text = "Status: Idle"
