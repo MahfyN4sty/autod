@@ -288,7 +288,7 @@ local function createControlPanel()
     closeBtn.Size = UDim2.new(0, 25, 0, 25)
     closeBtn.Position = UDim2.new(1, -27.5, 0, 2.5)
     closeBtn.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
-    closeBtn.Text = "✕"
+    closeBtn.Text = "X"
     closeBtn.Font = Enum.Font.GothamBold
     closeBtn.TextSize = 14
     closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -521,11 +521,11 @@ local function createControlPanel()
             local seconds = uptime % 60
             
             if hours > 0 then
-                uptimeLabel.Text = string.format("⏱️ Uptime: %dh %dm %ds", hours, minutes, seconds)
+                uptimeLabel.Text = string.format("Uptime: %dh %dm %ds", hours, minutes, seconds)
             elseif minutes > 0 then
-                uptimeLabel.Text = string.format("⏱️ Uptime: %dm %ds", minutes, seconds)
+                uptimeLabel.Text = string.format("Uptime: %dm %ds", minutes, seconds)
             else
-                uptimeLabel.Text = string.format("⏱️ Uptime: %ds", seconds)
+                uptimeLabel.Text = string.format("Uptime: %ds", seconds)
             end
         end
     end)
