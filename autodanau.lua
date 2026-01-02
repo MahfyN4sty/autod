@@ -537,10 +537,10 @@ local function createControlPanel()
         config.autoWinMode = not config.autoWinMode
         
         if config.autoWinMode then
-            modeBtn.Text = "Mode: Auto Win 🚀"
+            modeBtn.Text = "Mode: Auto Win"
             modeBtn.BackgroundColor3 = Color3.fromRGB(255, 100, 0)
         else
-            modeBtn.Text = "Mode: Tap-Tap 🎮"
+            modeBtn.Text = "Mode: Tap-Tap"
             modeBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 255)
         end
     end)
