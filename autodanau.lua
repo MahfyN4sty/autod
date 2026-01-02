@@ -1,10 +1,13 @@
 -- Auto Fishing Script
+-- Disclaimer: Penggunaan script ini dapat melanggar ToS Roblox
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local RunService = game:GetService("RunService")
 local Stats = game:GetService("Stats")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -17,7 +20,7 @@ local config = {
     autoRecast = true,
     castHoldTime = 0.6,
     enabled = false,
-    autoWinMode = false -- Mode baru: Auto win tanpa tap
+    autoWinMode = false
 }
 
 -- Status
@@ -25,8 +28,8 @@ local isMinigameActive = false
 local isCasting = false
 local clickConnection = nil
 local lastCastTime = 0
-local fishCaught = 0 -- Counter ikan tertangkap
-local wasMinigameActive = false -- Track minigame state
+local fishCaught = 0
+local wasMinigameActive = false
 
 -- Performance Monitoring
 local currentFPS = 0
@@ -34,6 +37,7 @@ local currentPing = 0
 local packetLoss = 0
 local frameCount = 0
 local lastFPSUpdate = tick()
+local scriptStartTime = tick()
 
 -- Fungsi untuk hold click (cast fishing rod)
 local function holdClick(duration)
@@ -66,7 +70,6 @@ local function castFishingRod()
     if isCasting then return end
     
     isCasting = true
-    print("🎣 Casting fishing rod...")
     
     holdClick(config.castHoldTime)
     
@@ -127,29 +130,22 @@ local function startAutoClick()
         
         local active, filler = detectMinigame()
         
-        -- Deteksi fish caught (minigame selesai)
         if wasMinigameActive and not active then
             fishCaught = fishCaught + 1
-            print("🐟 Fish caught! Total:", fishCaught)
         end
         
         wasMinigameActive = active
         isMinigameActive = active
         
         if active and filler then
-            -- Mode 1: Auto Win (Set bar penuh + 1 klik trigger)
             if config.autoWinMode then
                 if filler.Size.X.Scale < 0.99 then
-                    -- Set bar hampir penuh
                     filler.Size = UDim2.new(0.99, 0, 1, 0)
                     task.wait(0.05)
-                    -- 1x klik untuk trigger win
                     quickTap()
-                    print("🎣 Auto Win: Bar full + trigger click")
-                    task.wait(0.5) -- Cooldown
+                    task.wait(0.5)
                 end
             else
-                -- Mode 2: Normal tap-tap
                 if config.autoClick then
                     if config.smartClick then
                         if filler.Size.X.Scale < 1 then
@@ -212,7 +208,6 @@ local function updatePing()
             if success and result then
                 currentPing = result
             else
-                -- Fallback method
                 local success2, statsItem = pcall(function()
                     return Stats.Network.ServerStatsItem["Data Ping"]:GetValueString()
                 end)
@@ -230,7 +225,6 @@ end
 
 -- GUI Control Panel
 local function createControlPanel()
-    -- Hapus GUI lama jika ada
     local oldGui = playerGui:FindFirstChild("AutoFishingGUI")
     if oldGui then
         oldGui:Destroy()
@@ -240,12 +234,14 @@ local function createControlPanel()
     screenGui.Name = "AutoFishingGUI"
     screenGui.ResetOnSpawn = false
     screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    screenGui.IgnoreGuiInset = true -- Penting untuk mobile compatibility
+    screenGui.IgnoreGuiInset = true
     
     local frame = Instance.new("Frame")
     frame.Name = "MainFrame"
-    frame.Size = UDim2.new(0, 250, 0, 290)
-    frame.Position = UDim2.new(0.85, 0, 0.3, 0)
+    frame.Size = UDim2.new(0, 250, 0, 345)
+    -- POSISI DIUBAH: Lebih ke bawah untuk mobile
+    frame.Position = UDim2.new(0.5, -125, 0, 100) -- Posisi Y diubah dari tengah ke 100px dari atas
+    frame.AnchorPoint = Vector2.new(0.5, 0)
     frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     frame.BorderSizePixel = 0
     frame.Parent = screenGui
@@ -370,7 +366,7 @@ local function createControlPanel()
     -- Performance Stats Box
     local statsBox = Instance.new("Frame")
     statsBox.Name = "StatsBox"
-    statsBox.Size = UDim2.new(0.9, 0, 0, 80)
+    statsBox.Size = UDim2.new(0.9, 0, 0, 100)
     statsBox.Position = UDim2.new(0.05, 0, 0, 195)
     statsBox.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
     statsBox.BackgroundTransparency = 0.3
@@ -431,15 +427,50 @@ local function createControlPanel()
     connectionLabel.TextXAlignment = Enum.TextXAlignment.Left
     connectionLabel.Parent = statsBox
     
+    -- Uptime Label
+    local uptimeLabel = Instance.new("TextLabel")
+    uptimeLabel.Name = "Uptime"
+    uptimeLabel.Size = UDim2.new(1, -16, 0, 18)
+    uptimeLabel.Position = UDim2.new(0, 8, 0, 82)
+    uptimeLabel.BackgroundTransparency = 1
+    uptimeLabel.Text = "Uptime: 0s"
+    uptimeLabel.Font = Enum.Font.GothamBold
+    uptimeLabel.TextSize = 11
+    uptimeLabel.TextColor3 = Color3.fromRGB(150, 150, 255)
+    uptimeLabel.TextXAlignment = Enum.TextXAlignment.Left
+    uptimeLabel.Parent = statsBox
+    
+    -- OWNER TEXT dengan efek Rainbow
+    local ownerLabel = Instance.new("TextLabel")
+    ownerLabel.Name = "OwnerLabel"
+    ownerLabel.Size = UDim2.new(0.9, 0, 0, 25)
+    ownerLabel.Position = UDim2.new(0.05, 0, 1, -30)
+    ownerLabel.BackgroundTransparency = 1
+    ownerLabel.Text = "OWNED by KPTxCHEEZZEEUU"
+    ownerLabel.Font = Enum.Font.GothamBold
+    ownerLabel.TextSize = 11
+    ownerLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
+    ownerLabel.TextStrokeTransparency = 0.5
+    ownerLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    ownerLabel.Parent = frame
+    
+    -- Efek Rainbow Animation
+    task.spawn(function()
+        local hue = 0
+        while ownerLabel and ownerLabel.Parent do
+            hue = (hue + 2) % 360
+            ownerLabel.TextColor3 = Color3.fromHSV(hue / 360, 1, 1)
+            task.wait(0.03)
+        end
+    end)
+    
     -- Update stats loop
     task.spawn(function()
         while statsBox and statsBox.Parent do
             task.wait(0.5)
             
-            -- Update Fish Counter
             fishCounterLabel.Text = "🐟 Fish Caught: " .. fishCaught
             
-            -- Update FPS
             local fpsColor = Color3.fromRGB(0, 255, 150)
             if currentFPS < 30 then
                 fpsColor = Color3.fromRGB(255, 50, 50)
@@ -449,7 +480,6 @@ local function createControlPanel()
             fpsLabel.Text = "FPS: " .. currentFPS
             fpsLabel.TextColor3 = fpsColor
             
-            -- Update Ping
             local pingColor = Color3.fromRGB(0, 255, 150)
             if currentPing > 200 then
                 pingColor = Color3.fromRGB(255, 50, 50)
@@ -459,7 +489,6 @@ local function createControlPanel()
             pingLabel.Text = "Ping: " .. currentPing .. " ms"
             pingLabel.TextColor3 = pingColor
             
-            -- Update Connection Status
             local connectionStatus = "Good"
             local statusColor = Color3.fromRGB(0, 255, 150)
             
@@ -473,13 +502,31 @@ local function createControlPanel()
             
             connectionLabel.Text = "Status: " .. connectionStatus
             connectionLabel.TextColor3 = statusColor
+            
+            local uptime = math.floor(tick() - scriptStartTime)
+            local hours = math.floor(uptime / 3600)
+            local minutes = math.floor((uptime % 3600) / 60)
+            local seconds = uptime % 60
+            
+            if hours > 0 then
+                uptimeLabel.Text = string.format("Uptime: %dh %dm %ds", hours, minutes, seconds)
+            elseif minutes > 0 then
+                uptimeLabel.Text = string.format("Uptime: %dm %ds", minutes, seconds)
+            else
+                uptimeLabel.Text = string.format("Uptime: %ds", seconds)
+            end
+            
+            if config.enabled then
+                uptimeLabel.TextColor3 = Color3.fromRGB(0, 255, 150)
+            else
+                uptimeLabel.TextColor3 = Color3.fromRGB(150, 150, 255)
+            end
         end
     end)
     
     -- Toggle functionality
     local isMinimized = false
     
-    -- Mode Toggle
     modeBtn.MouseButton1Click:Connect(function()
         config.autoWinMode = not config.autoWinMode
         
@@ -494,37 +541,24 @@ local function createControlPanel()
     
     minimizeBtn.MouseButton1Click:Connect(function()
         isMinimized = not isMinimized
-        
-        if isMinimized then
-            -- Minimize - Sembunyikan semua UI
-            frame.Visible = false
-            print("📦 GUI Minimized - Press 'J' to restore")
-        else
-            -- Restore
-            frame.Visible = true
-            print("📂 GUI Restored")
-        end
+        frame.Visible = not isMinimized
     end)
     
     closeBtn.MouseButton1Click:Connect(function()
-        -- Stop all processes
         config.enabled = false
         if clickConnection then
             clickConnection:Disconnect()
         end
         
-        -- Animate out
         frame:TweenSize(UDim2.new(0, 0, 0, 0), "In", "Back", 0.3, true)
         task.wait(0.3)
         screenGui:Destroy()
-        print("❌ Auto Fishing Script Closed")
     end)
     
     toggleBtn.MouseButton1Click:Connect(function()
         config.enabled = not config.enabled
         
         if config.enabled then
-            -- Reset fish counter saat enable
             fishCaught = 0
             wasMinigameActive = false
             fishCounterLabel.Text = "🐟 Fish Caught: 0"
@@ -551,69 +585,69 @@ local function createControlPanel()
         end
     end)
     
-    -- Draggable
+    -- DRAG FUNCTIONALITY - FIXED untuk Mobile
     local dragging = false
-    local dragInput, mousePos, framePos
+    local dragInput
+    local dragStart
+    local startPos
+    
+    local function updateInput(input)
+        if dragging then
+            local delta = input.Position - dragStart
+            frame.Position = UDim2.new(
+                startPos.X.Scale,
+                startPos.X.Offset + delta.X,
+                startPos.Y.Scale,
+                startPos.Y.Offset + delta.Y
+            )
+        end
+    end
     
     title.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or 
+           input.UserInputType == Enum.UserInputType.Touch then
             dragging = true
-            mousePos = input.Position
-            framePos = frame.Position
+            dragStart = input.Position
+            startPos = frame.Position
+            
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
         end
     end)
     
-    title.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = false
+    title.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or 
+           input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
         end
     end)
     
-    game:GetService("UserInputService").InputChanged:Connect(function(input)
-        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-            local delta = input.Position - mousePos
-            frame.Position = UDim2.new(
-                framePos.X.Scale,
-                framePos.X.Offset + delta.X,
-                framePos.Y.Scale,
-                framePos.Y.Offset + delta.Y
-            )
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            updateInput(input)
         end
     end)
     
     screenGui.Parent = playerGui
     
-    -- Hotkey "J" untuk toggle visibility (FIXED)
-    local UserInputService = game:GetService("UserInputService")
-    
+    -- Hotkey "J" untuk toggle visibility
     local hotkeyConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
-        -- Jangan cek gameProcessed agar bisa dipanggil kapan saja
         if input.KeyCode == Enum.KeyCode.J then
             if screenGui and screenGui.Parent then
                 frame.Visible = not frame.Visible
                 isMinimized = not frame.Visible
-                
-                if frame.Visible then
-                    print("📂 [J] GUI Opened")
-                else
-                    print("📦 [J] GUI Hidden")
-                end
             end
         end
     end)
     
-    -- Cleanup saat GUI dihapus
     screenGui.Destroying:Connect(function()
         if hotkeyConnection then
             hotkeyConnection:Disconnect()
         end
     end)
-    
-    print("🎣 Auto Fishing Script Loaded!")
-    print("✅ Performance Monitor Active")
-    print("🐟 Fish Counter Active")
-    print("⌨️  Press 'J' to toggle GUI visibility")
-    print("▶ Tekan tombol ENABLED untuk memulai")
     
     return screenGui
 end
