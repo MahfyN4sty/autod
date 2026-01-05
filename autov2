@@ -1,10 +1,11 @@
--- Auto Fishing Script with Anti-AFK (Fixed Version v2)
+-- Auto Fishing Script with Anti-AFK (Final Version)
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local Stats = game:GetService("Stats")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -26,11 +27,16 @@ local lastCastTime = 0
 local fishCaught = 0
 local wasMinigameActive = false
 local startTime = 0
+local stoppedTime = 0
 local afkRemote = nil
 
 -- Anti-AFK Loops
 local afkSpamLoop = nil
 local afkMouseLoop = nil
+
+-- FPS Counter
+local fpsCounter = 0
+local lastFPSUpdate = tick()
 
 -- ===== ANTI-AFK SYSTEM =====
 local function findAFKRemote()
@@ -54,18 +60,18 @@ local function startAntiAFK()
     
     -- Block WindowFocus events
     UserInputService.WindowFocusReleased:Connect(function()
-        if config.enabled and config.antiAFK then
+        if config.enabled then
             pcall(function() afkRemote:FireServer(false) end)
         end
     end)
     
     UserInputService.WindowFocused:Connect(function()
-        if config.enabled and config.antiAFK then
+        if config.enabled then
             pcall(function() afkRemote:FireServer(false) end)
         end
     end)
     
-    -- Spam "not AFK" signal (only when fishing is enabled)
+    -- Spam "not AFK" signal
     if afkSpamLoop then
         task.cancel(afkSpamLoop)
     end
@@ -73,13 +79,11 @@ local function startAntiAFK()
     afkSpamLoop = task.spawn(function()
         while config.enabled do
             task.wait(1)
-            if config.antiAFK then
-                pcall(function() afkRemote:FireServer(false) end)
-            end
+            pcall(function() afkRemote:FireServer(false) end)
         end
     end)
     
-    -- Simulate mouse movement (only when fishing is enabled)
+    -- Simulate mouse movement
     if afkMouseLoop then
         task.cancel(afkMouseLoop)
     end
@@ -87,16 +91,14 @@ local function startAntiAFK()
     afkMouseLoop = task.spawn(function()
         while config.enabled do
             task.wait(3)
-            if config.antiAFK then
-                local vp = workspace.CurrentCamera.ViewportSize
-                pcall(function()
-                    VirtualInputManager:SendMouseMoveEvent(
-                        vp.X/2 + math.random(-2, 2),
-                        vp.Y/2 + math.random(-2, 2),
-                        game
-                    )
-                end)
-            end
+            local vp = workspace.CurrentCamera.ViewportSize
+            pcall(function()
+                VirtualInputManager:SendMouseMoveEvent(
+                    vp.X/2 + math.random(-2, 2),
+                    vp.Y/2 + math.random(-2, 2),
+                    game
+                )
+            end)
         end
     end)
     
@@ -198,6 +200,30 @@ local function monitorRecast()
     end)
 end
 
+-- ===== UTILITY FUNCTIONS =====
+local function getFPS()
+    local fps = 0
+    pcall(function()
+        fps = math.floor(1 / RunService.Heartbeat:Wait())
+    end)
+    return fps
+end
+
+local function getPing()
+    local ping = 0
+    pcall(function()
+        ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
+    end)
+    return ping
+end
+
+local function formatTime(seconds)
+    local hours = math.floor(seconds / 3600)
+    local minutes = math.floor((seconds % 3600) / 60)
+    local secs = seconds % 60
+    return string.format("%02d:%02d:%02d", hours, minutes, secs)
+end
+
 -- ===== SIMPLE GUI =====
 local function createGUI()
     -- Remove old GUI if exists
@@ -211,8 +237,8 @@ local function createGUI()
     sg.Parent = playerGui
     
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 220, 0, 240)
-    frame.Position = UDim2.new(0.5, -110, 0, 80)
+    frame.Size = UDim2.new(0, 240, 0, 240)
+    frame.Position = UDim2.new(0.5, -120, 0, 80)
     frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
     frame.BorderSizePixel = 0
     frame.Active = true
@@ -293,51 +319,54 @@ local function createGUI()
     modeCorner.CornerRadius = UDim.new(0, 6)
     modeCorner.Parent = modeBtn
     
-    -- Anti-AFK Button
-    local afkBtn = Instance.new("TextButton")
-    afkBtn.Size = UDim2.new(0.9, 0, 0, 30)
-    afkBtn.Position = UDim2.new(0.05, 0, 0, 135)
-    afkBtn.BackgroundColor3 = Color3.fromRGB(50, 220, 50)
-    afkBtn.BorderSizePixel = 0
-    afkBtn.Text = "Anti-AFK: ON"
-    afkBtn.Font = Enum.Font.GothamBold
-    afkBtn.TextSize = 12
-    afkBtn.TextColor3 = Color3.new(1, 1, 1)
-    afkBtn.AutoButtonColor = true
-    afkBtn.Parent = frame
-    
-    local afkCorner = Instance.new("UICorner")
-    afkCorner.CornerRadius = UDim.new(0, 6)
-    afkCorner.Parent = afkBtn
-    
     -- Stats Display
     local statsLabel = Instance.new("TextLabel")
-    statsLabel.Size = UDim2.new(0.9, 0, 0, 50)
-    statsLabel.Position = UDim2.new(0.05, 0, 0, 175)
+    statsLabel.Size = UDim2.new(0.9, 0, 0, 90)
+    statsLabel.Position = UDim2.new(0.05, 0, 0, 135)
     statsLabel.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
     statsLabel.BorderSizePixel = 0
-    statsLabel.Text = "Fish: 0\nTime: 0s"
+    statsLabel.Text = "Fish: 0\nTime: 00:00:00\nFPS: 0\nPing: 0ms"
     statsLabel.Font = Enum.Font.GothamBold
     statsLabel.TextSize = 12
     statsLabel.TextColor3 = Color3.fromRGB(0, 255, 150)
-    statsLabel.TextXAlignment = Enum.TextXAlignment.Center
-    statsLabel.TextYAlignment = Enum.TextYAlignment.Center
+    statsLabel.TextXAlignment = Enum.TextXAlignment.Left
+    statsLabel.TextYAlignment = Enum.TextYAlignment.Top
     statsLabel.Parent = frame
+    
+    -- Add padding to stats
+    local statsPadding = Instance.new("UIPadding")
+    statsPadding.PaddingLeft = UDim.new(0, 10)
+    statsPadding.PaddingTop = UDim.new(0, 8)
+    statsPadding.Parent = statsLabel
     
     local statsCorner = Instance.new("UICorner")
     statsCorner.CornerRadius = UDim.new(0, 8)
     statsCorner.Parent = statsLabel
     
-    -- Update Stats
+    -- Update Stats Loop
     task.spawn(function()
         while statsLabel and statsLabel.Parent do
-            task.wait(1)
+            task.wait(0.5)
+            
+            local currentFPS = getFPS()
+            local currentPing = getPing()
+            local uptime = 0
+            
             if config.enabled then
-                local uptime = math.floor(tick() - startTime)
-                statsLabel.Text = string.format("Fish: %d\nTime: %ds", fishCaught, uptime)
+                uptime = math.floor(tick() - startTime)
             else
-                statsLabel.Text = string.format("Fish: %d\nTime: 0s", fishCaught)
+                uptime = stoppedTime -- Tampilkan waktu saat stop
             end
+            
+            local timeStr = formatTime(uptime)
+            
+            statsLabel.Text = string.format(
+                "Fish: %d\nTime: %s\nFPS: %d\nPing: %dms",
+                fishCaught,
+                timeStr,
+                currentFPS,
+                currentPing
+            )
         end
     end)
     
@@ -348,20 +377,20 @@ local function createGUI()
         if config.enabled then
             fishCaught = 0
             startTime = tick()
+            stoppedTime = 0 -- Reset waktu saat start
             toggleBtn.BackgroundColor3 = Color3.fromRGB(50, 220, 50)
             toggleBtn.Text = "STOP"
             startAutoClick()
             monitorRecast()
-            if config.antiAFK then
-                startAntiAFK()
-            end
+            startAntiAFK() -- Anti-AFK otomatis aktif saat START
             task.wait(0.5)
             castFishingRod()
         else
+            stoppedTime = math.floor(tick() - startTime) -- Simpan waktu saat stop
             toggleBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
             toggleBtn.Text = "START"
             if clickConnection then clickConnection:Disconnect() end
-            stopAntiAFK()
+            stopAntiAFK() -- Anti-AFK otomatis mati saat STOP
         end
     end)
     
@@ -373,21 +402,6 @@ local function createGUI()
         else
             modeBtn.Text = "Mode: Tap-Tap"
             modeBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 255)
-        end
-    end)
-    
-    afkBtn.MouseButton1Click:Connect(function()
-        config.antiAFK = not config.antiAFK
-        if config.antiAFK then
-            afkBtn.Text = "Anti-AFK: ON"
-            afkBtn.BackgroundColor3 = Color3.fromRGB(50, 220, 50)
-            if config.enabled then
-                startAntiAFK()
-            end
-        else
-            afkBtn.Text = "Anti-AFK: OFF"
-            afkBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
-            stopAntiAFK()
         end
     end)
     
@@ -459,7 +473,7 @@ task.spawn(function()
 end)
 
 -- Create GUI immediately with proper error handling
-task.wait(0.5) -- Small delay to ensure PlayerGui is ready
+task.wait(0.5)
 
 local success, err = pcall(createGUI)
 
@@ -467,7 +481,6 @@ if success then
     --print("✅ Script Loaded! Press 'J' to toggle GUI")
 else
     warn("❌ GUI Creation Failed:", err)
-    -- Retry once
     task.wait(1)
     success, err = pcall(createGUI)
     if success then
