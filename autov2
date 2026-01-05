@@ -1,0 +1,478 @@
+-- Auto Fishing Script with Anti-AFK (Fixed Version v2)
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- Config
+local config = {
+    enabled = false,
+    autoWinMode = false,
+    antiAFK = true,
+    clickDelay = 0.05,
+    castHoldTime = 0.6
+}
+
+-- Status Variables
+local isMinigameActive = false
+local isCasting = false
+local clickConnection = nil
+local lastCastTime = 0
+local fishCaught = 0
+local wasMinigameActive = false
+local startTime = 0
+local afkRemote = nil
+
+-- Anti-AFK Loops
+local afkSpamLoop = nil
+local afkMouseLoop = nil
+
+-- ===== ANTI-AFK SYSTEM =====
+local function findAFKRemote()
+    afkRemote = ReplicatedStorage:FindFirstChild("AFK")
+    if not afkRemote then
+        task.wait(2)
+        afkRemote = ReplicatedStorage:FindFirstChild("AFK")
+    end
+    return afkRemote
+end
+
+local function startAntiAFK()
+    if not afkRemote then
+        findAFKRemote()
+    end
+    
+    if not afkRemote then
+        warn("⚠️ Anti-AFK Remote not found")
+        return
+    end
+    
+    -- Block WindowFocus events
+    UserInputService.WindowFocusReleased:Connect(function()
+        if config.enabled and config.antiAFK then
+            pcall(function() afkRemote:FireServer(false) end)
+        end
+    end)
+    
+    UserInputService.WindowFocused:Connect(function()
+        if config.enabled and config.antiAFK then
+            pcall(function() afkRemote:FireServer(false) end)
+        end
+    end)
+    
+    -- Spam "not AFK" signal (only when fishing is enabled)
+    if afkSpamLoop then
+        task.cancel(afkSpamLoop)
+    end
+    
+    afkSpamLoop = task.spawn(function()
+        while config.enabled do
+            task.wait(1)
+            if config.antiAFK then
+                pcall(function() afkRemote:FireServer(false) end)
+            end
+        end
+    end)
+    
+    -- Simulate mouse movement (only when fishing is enabled)
+    if afkMouseLoop then
+        task.cancel(afkMouseLoop)
+    end
+    
+    afkMouseLoop = task.spawn(function()
+        while config.enabled do
+            task.wait(3)
+            if config.antiAFK then
+                local vp = workspace.CurrentCamera.ViewportSize
+                pcall(function()
+                    VirtualInputManager:SendMouseMoveEvent(
+                        vp.X/2 + math.random(-2, 2),
+                        vp.Y/2 + math.random(-2, 2),
+                        game
+                    )
+                end)
+            end
+        end
+    end)
+    
+    --print("✅ Anti-AFK Started")
+end
+
+local function stopAntiAFK()
+    if afkSpamLoop then
+        task.cancel(afkSpamLoop)
+        afkSpamLoop = nil
+    end
+    if afkMouseLoop then
+        task.cancel(afkMouseLoop)
+        afkMouseLoop = nil
+    end
+    --print("⛔ Anti-AFK Stopped")
+end
+
+-- ===== FISHING FUNCTIONS =====
+local function holdClick(duration)
+    local center = workspace.CurrentCamera.ViewportSize / 2
+    VirtualInputManager:SendMouseButtonEvent(center.X, center.Y, 0, true, game, 0)
+    task.wait(duration)
+    VirtualInputManager:SendMouseButtonEvent(center.X, center.Y, 0, false, game, 0)
+end
+
+local function castFishingRod()
+    if isCasting then return end
+    isCasting = true
+    holdClick(config.castHoldTime)
+    lastCastTime = tick()
+    task.wait(0.5)
+    isCasting = false
+end
+
+local function quickTap()
+    local center = workspace.CurrentCamera.ViewportSize / 2
+    VirtualInputManager:SendMouseButtonEvent(center.X, center.Y, 0, true, game, 0)
+    task.wait(0.01)
+    VirtualInputManager:SendMouseButtonEvent(center.X, center.Y, 0, false, game, 0)
+end
+
+local function detectMinigame()
+    local miniGameGui = playerGui:FindFirstChild("MiniGameGUI")
+    if miniGameGui then
+        local bg = miniGameGui:FindFirstChild("Background")
+        if bg then
+            local filler = bg:FindFirstChild("Filler")
+            return filler ~= nil, filler
+        end
+    end
+    return false, nil
+end
+
+local function startAutoClick()
+    if clickConnection then clickConnection:Disconnect() end
+    
+    clickConnection = RunService.Heartbeat:Connect(function()
+        if not config.enabled or isCasting then return end
+        
+        local active, filler = detectMinigame()
+        
+        if wasMinigameActive and not active then
+            fishCaught = fishCaught + 1
+        end
+        
+        wasMinigameActive = active
+        isMinigameActive = active
+        
+        if active and filler then
+            if config.autoWinMode then
+                if filler.Size.X.Scale < 0.99 then
+                    filler.Size = UDim2.new(0.99, 0, 1, 0)
+                    task.wait(0.05)
+                    quickTap()
+                    task.wait(0.5)
+                end
+            else
+                if filler.Size.X.Scale < 1 then
+                    quickTap()
+                    task.wait(config.clickDelay)
+                end
+            end
+        end
+    end)
+end
+
+local function monitorRecast()
+    task.spawn(function()
+        while config.enabled do
+            task.wait(1)
+            if not isMinigameActive and not isCasting then
+                local active = detectMinigame()
+                if not active and tick() - lastCastTime >= 1 then
+                    castFishingRod()
+                end
+            end
+        end
+    end)
+end
+
+-- ===== SIMPLE GUI =====
+local function createGUI()
+    -- Remove old GUI if exists
+    local oldGui = playerGui:FindFirstChild("AutoFishGUI")
+    if oldGui then oldGui:Destroy() end
+    
+    local sg = Instance.new("ScreenGui")
+    sg.Name = "AutoFishGUI"
+    sg.ResetOnSpawn = false
+    sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    sg.Parent = playerGui
+    
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 220, 0, 240)
+    frame.Position = UDim2.new(0.5, -110, 0, 80)
+    frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    frame.BorderSizePixel = 0
+    frame.Active = true
+    frame.Draggable = false
+    frame.Parent = sg
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 10)
+    corner.Parent = frame
+    
+    -- Title
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, -50, 0, 35)
+    title.Position = UDim2.new(0, 0, 0, 0)
+    title.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
+    title.BorderSizePixel = 0
+    title.Text = "Auto Fishing"
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = 15
+    title.TextColor3 = Color3.new(1, 1, 1)
+    title.TextXAlignment = Enum.TextXAlignment.Center
+    title.TextYAlignment = Enum.TextYAlignment.Center
+    title.Active = true
+    title.Parent = frame
+    
+    local titleCorner = Instance.new("UICorner")
+    titleCorner.CornerRadius = UDim.new(0, 10)
+    titleCorner.Parent = title
+    
+    -- Close Button
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Size = UDim2.new(0, 30, 0, 30)
+    closeBtn.Position = UDim2.new(1, -35, 0, 2.5)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+    closeBtn.BorderSizePixel = 0
+    closeBtn.Text = "X"
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.TextSize = 14
+    closeBtn.TextColor3 = Color3.new(1, 1, 1)
+    closeBtn.AutoButtonColor = true
+    closeBtn.Parent = frame
+    
+    local closeCorner = Instance.new("UICorner")
+    closeCorner.CornerRadius = UDim.new(0, 6)
+    closeCorner.Parent = closeBtn
+    
+    -- Toggle Button
+    local toggleBtn = Instance.new("TextButton")
+    toggleBtn.Size = UDim2.new(0.9, 0, 0, 40)
+    toggleBtn.Position = UDim2.new(0.05, 0, 0, 45)
+    toggleBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
+    toggleBtn.BorderSizePixel = 0
+    toggleBtn.Text = "START"
+    toggleBtn.Font = Enum.Font.GothamBold
+    toggleBtn.TextSize = 14
+    toggleBtn.TextColor3 = Color3.new(1, 1, 1)
+    toggleBtn.AutoButtonColor = true
+    toggleBtn.Parent = frame
+    
+    local toggleCorner = Instance.new("UICorner")
+    toggleCorner.CornerRadius = UDim.new(0, 8)
+    toggleCorner.Parent = toggleBtn
+    
+    -- Mode Button
+    local modeBtn = Instance.new("TextButton")
+    modeBtn.Size = UDim2.new(0.9, 0, 0, 30)
+    modeBtn.Position = UDim2.new(0.05, 0, 0, 95)
+    modeBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 255)
+    modeBtn.BorderSizePixel = 0
+    modeBtn.Text = "Mode: Tap-Tap"
+    modeBtn.Font = Enum.Font.GothamBold
+    modeBtn.TextSize = 12
+    modeBtn.TextColor3 = Color3.new(1, 1, 1)
+    modeBtn.AutoButtonColor = true
+    modeBtn.Parent = frame
+    
+    local modeCorner = Instance.new("UICorner")
+    modeCorner.CornerRadius = UDim.new(0, 6)
+    modeCorner.Parent = modeBtn
+    
+    -- Anti-AFK Button
+    local afkBtn = Instance.new("TextButton")
+    afkBtn.Size = UDim2.new(0.9, 0, 0, 30)
+    afkBtn.Position = UDim2.new(0.05, 0, 0, 135)
+    afkBtn.BackgroundColor3 = Color3.fromRGB(50, 220, 50)
+    afkBtn.BorderSizePixel = 0
+    afkBtn.Text = "Anti-AFK: ON"
+    afkBtn.Font = Enum.Font.GothamBold
+    afkBtn.TextSize = 12
+    afkBtn.TextColor3 = Color3.new(1, 1, 1)
+    afkBtn.AutoButtonColor = true
+    afkBtn.Parent = frame
+    
+    local afkCorner = Instance.new("UICorner")
+    afkCorner.CornerRadius = UDim.new(0, 6)
+    afkCorner.Parent = afkBtn
+    
+    -- Stats Display
+    local statsLabel = Instance.new("TextLabel")
+    statsLabel.Size = UDim2.new(0.9, 0, 0, 50)
+    statsLabel.Position = UDim2.new(0.05, 0, 0, 175)
+    statsLabel.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    statsLabel.BorderSizePixel = 0
+    statsLabel.Text = "Fish: 0\nTime: 0s"
+    statsLabel.Font = Enum.Font.GothamBold
+    statsLabel.TextSize = 12
+    statsLabel.TextColor3 = Color3.fromRGB(0, 255, 150)
+    statsLabel.TextXAlignment = Enum.TextXAlignment.Center
+    statsLabel.TextYAlignment = Enum.TextYAlignment.Center
+    statsLabel.Parent = frame
+    
+    local statsCorner = Instance.new("UICorner")
+    statsCorner.CornerRadius = UDim.new(0, 8)
+    statsCorner.Parent = statsLabel
+    
+    -- Update Stats
+    task.spawn(function()
+        while statsLabel and statsLabel.Parent do
+            task.wait(1)
+            if config.enabled then
+                local uptime = math.floor(tick() - startTime)
+                statsLabel.Text = string.format("Fish: %d\nTime: %ds", fishCaught, uptime)
+            else
+                statsLabel.Text = string.format("Fish: %d\nTime: 0s", fishCaught)
+            end
+        end
+    end)
+    
+    -- Button Functions
+    toggleBtn.MouseButton1Click:Connect(function()
+        config.enabled = not config.enabled
+        
+        if config.enabled then
+            fishCaught = 0
+            startTime = tick()
+            toggleBtn.BackgroundColor3 = Color3.fromRGB(50, 220, 50)
+            toggleBtn.Text = "STOP"
+            startAutoClick()
+            monitorRecast()
+            if config.antiAFK then
+                startAntiAFK()
+            end
+            task.wait(0.5)
+            castFishingRod()
+        else
+            toggleBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
+            toggleBtn.Text = "START"
+            if clickConnection then clickConnection:Disconnect() end
+            stopAntiAFK()
+        end
+    end)
+    
+    modeBtn.MouseButton1Click:Connect(function()
+        config.autoWinMode = not config.autoWinMode
+        if config.autoWinMode then
+            modeBtn.Text = "Mode: Auto Win"
+            modeBtn.BackgroundColor3 = Color3.fromRGB(255, 100, 0)
+        else
+            modeBtn.Text = "Mode: Tap-Tap"
+            modeBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 255)
+        end
+    end)
+    
+    afkBtn.MouseButton1Click:Connect(function()
+        config.antiAFK = not config.antiAFK
+        if config.antiAFK then
+            afkBtn.Text = "Anti-AFK: ON"
+            afkBtn.BackgroundColor3 = Color3.fromRGB(50, 220, 50)
+            if config.enabled then
+                startAntiAFK()
+            end
+        else
+            afkBtn.Text = "Anti-AFK: OFF"
+            afkBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
+            stopAntiAFK()
+        end
+    end)
+    
+    closeBtn.MouseButton1Click:Connect(function()
+        config.enabled = false
+        if clickConnection then clickConnection:Disconnect() end
+        stopAntiAFK()
+        sg:Destroy()
+    end)
+    
+    -- Drag Functionality
+    local dragging = false
+    local dragInput = nil
+    local dragStart = nil
+    local startPos = nil
+    
+    title.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or 
+           input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = frame.Position
+            
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+    
+    title.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or 
+           input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            local delta = input.Position - dragStart
+            frame.Position = UDim2.new(
+                startPos.X.Scale,
+                startPos.X.Offset + delta.X,
+                startPos.Y.Scale,
+                startPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+    
+    -- Hotkey J
+    UserInputService.InputBegan:Connect(function(input, gpe)
+        if gpe then return end
+        if input.KeyCode == Enum.KeyCode.J then
+            frame.Visible = not frame.Visible
+        end
+    end)
+    
+    --print("✅ GUI Created Successfully!")
+    return sg
+end
+
+-- ===== INITIALIZE =====
+--print("🎣 Loading Auto Fishing...")
+
+-- Find AFK Remote early
+task.spawn(function()
+    findAFKRemote()
+end)
+
+-- Create GUI immediately with proper error handling
+task.wait(0.5) -- Small delay to ensure PlayerGui is ready
+
+local success, err = pcall(createGUI)
+
+if success then
+    --print("✅ Script Loaded! Press 'J' to toggle GUI")
+else
+    warn("❌ GUI Creation Failed:", err)
+    -- Retry once
+    task.wait(1)
+    success, err = pcall(createGUI)
+    if success then
+        --print("✅ Script Loaded on second attempt!")
+    else
+        warn("❌ Second attempt failed:", err)
+    end
+end
