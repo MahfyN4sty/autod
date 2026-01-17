@@ -1,90 +1,37 @@
--- Roblox Auto E Press Macro with UI
+-- Roblox Auto E Hold Macro with UI
 -- Paste this script into your executor and run
 
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 
 -- Variables
 local player = Players.LocalPlayer
 local macroRunning = false
-local macroThread = nil
 
--- Function to simulate key press
-local function pressKey(key, duration)
+-- Function to hold key
+local function holdKey(key, duration)
     if not macroRunning then return end
+    
+    -- Press and hold the key
     VirtualInputManager:SendKeyEvent(true, Enum.KeyCode[key], false, game)
-    wait(duration or 0.03)
-    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode[key], false, game)
-end
-
--- Function to wait (delay in milliseconds converted to seconds)
-local function delay(ms)
-    if not macroRunning then return end
-    wait(ms / 1000)
+    wait(duration)
+    
+    -- Release the key
+    if macroRunning then
+        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode[key], false, game)
+    end
 end
 
 -- Macro sequence function
 local function runMacro()
     while macroRunning do
-        delay(460)
-        pressKey("E") delay(502)
-        pressKey("E") delay(47)
-        pressKey("E") delay(37)
-        pressKey("E") delay(24)
-        pressKey("E") delay(31)
-        pressKey("E") delay(31)
-        pressKey("E") delay(31)
-        pressKey("E") delay(34)
-        pressKey("E") delay(28)
-        pressKey("E") delay(46)
-        pressKey("E") delay(31)
-        pressKey("E") delay(31)
-        pressKey("E") delay(31)
-        pressKey("E") delay(31)
-        pressKey("E") delay(31)
-        pressKey("E") delay(31)
-        pressKey("E") delay(46)
-        pressKey("E") delay(31)
-        pressKey("E") delay(31)
-        pressKey("E") delay(30)
-        pressKey("E") delay(31)
-        pressKey("E") delay(31)
-        pressKey("E") delay(30)
-        pressKey("E") delay(47)
-        pressKey("E") delay(31)
-        pressKey("E") delay(30)
-        pressKey("E") delay(31)
-        pressKey("E") delay(31)
-        pressKey("E") delay(31)
-        pressKey("E") delay(31)
-        pressKey("E") delay(46)
-        pressKey("E") delay(31)
-        pressKey("E") delay(31)
-        pressKey("E") delay(30)
-        pressKey("E") delay(31)
-        pressKey("E") delay(31)
-        pressKey("E") delay(31)
-        pressKey("E") delay(46)
-        pressKey("E") delay(31)
-        pressKey("E") delay(31)
-        pressKey("E") delay(31)
-        pressKey("E") delay(31)
-        pressKey("E") delay(31)
-        pressKey("E") delay(31)
-        pressKey("E") delay(31)
-        pressKey("E") delay(48)
-        pressKey("E") delay(30)
-        pressKey("E") delay(31)
-        pressKey("E") delay(31)
-        pressKey("E") delay(32)
-        pressKey("E") delay(30)
-        pressKey("E") delay(31)
-        pressKey("E") delay(31)
+        print("Holding E for 3 seconds...")
+        holdKey("E", 3) -- Hold E for 3 seconds
         
-        delay(460)
-        delay(2460)
-        delay(460)
+        if not macroRunning then break end
+        
+        print("Waiting 2 seconds...")
+        wait(2) -- Wait 2 seconds
     end
 end
 
@@ -94,10 +41,8 @@ local MainFrame = Instance.new("Frame")
 local Title = Instance.new("TextLabel")
 local ToggleButton = Instance.new("TextButton")
 local StatusLabel = Instance.new("TextLabel")
+local InfoLabel = Instance.new("TextLabel")
 local CloseButton = Instance.new("TextButton")
-local UICorner1 = Instance.new("UICorner")
-local UICorner2 = Instance.new("UICorner")
-local UICorner3 = Instance.new("UICorner")
 
 -- Properties
 ScreenGui.Name = "GachaMacroUI"
@@ -108,13 +53,14 @@ MainFrame.Name = "MainFrame"
 MainFrame.Parent = ScreenGui
 MainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
 MainFrame.BorderSizePixel = 0
-MainFrame.Position = UDim2.new(0.5, -150, 0.5, -100)
-MainFrame.Size = UDim2.new(0, 300, 0, 200)
+MainFrame.Position = UDim2.new(0.5, -150, 0.5, -120)
+MainFrame.Size = UDim2.new(0, 300, 0, 240)
 MainFrame.Active = true
 MainFrame.Draggable = true
 
-UICorner1.CornerRadius = UDim.new(0, 10)
-UICorner1.Parent = MainFrame
+local MainCorner = Instance.new("UICorner")
+MainCorner.CornerRadius = UDim.new(0, 10)
+MainCorner.Parent = MainFrame
 
 Title.Name = "Title"
 Title.Parent = MainFrame
@@ -122,7 +68,7 @@ Title.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
 Title.BorderSizePixel = 0
 Title.Size = UDim2.new(1, 0, 0, 40)
 Title.Font = Enum.Font.GothamBold
-Title.Text = "🎮 Gacha Macro"
+Title.Text = "🎮 Auto E Hold Macro"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 18
 
@@ -130,24 +76,35 @@ local TitleCorner = Instance.new("UICorner")
 TitleCorner.CornerRadius = UDim.new(0, 10)
 TitleCorner.Parent = Title
 
+InfoLabel.Name = "InfoLabel"
+InfoLabel.Parent = MainFrame
+InfoLabel.BackgroundTransparency = 1
+InfoLabel.Position = UDim2.new(0, 0, 0.2, 0)
+InfoLabel.Size = UDim2.new(1, 0, 0, 40)
+InfoLabel.Font = Enum.Font.Gotham
+InfoLabel.Text = "Hold: 3s | Delay: 2s"
+InfoLabel.TextColor3 = Color3.fromRGB(150, 200, 255)
+InfoLabel.TextSize = 13
+
 ToggleButton.Name = "ToggleButton"
 ToggleButton.Parent = MainFrame
 ToggleButton.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
 ToggleButton.BorderSizePixel = 0
-ToggleButton.Position = UDim2.new(0.1, 0, 0.35, 0)
-ToggleButton.Size = UDim2.new(0.8, 0, 0, 45)
+ToggleButton.Position = UDim2.new(0.1, 0, 0.42, 0)
+ToggleButton.Size = UDim2.new(0.8, 0, 0, 50)
 ToggleButton.Font = Enum.Font.GothamBold
 ToggleButton.Text = "START MACRO"
 ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 ToggleButton.TextSize = 16
 
-UICorner2.CornerRadius = UDim.new(0, 8)
-UICorner2.Parent = ToggleButton
+local ButtonCorner = Instance.new("UICorner")
+ButtonCorner.CornerRadius = UDim.new(0, 8)
+ButtonCorner.Parent = ToggleButton
 
 StatusLabel.Name = "StatusLabel"
 StatusLabel.Parent = MainFrame
 StatusLabel.BackgroundTransparency = 1
-StatusLabel.Position = UDim2.new(0, 0, 0.65, 0)
+StatusLabel.Position = UDim2.new(0, 0, 0.73, 0)
 StatusLabel.Size = UDim2.new(1, 0, 0, 30)
 StatusLabel.Font = Enum.Font.Gotham
 StatusLabel.Text = "Status: Stopped ⭕"
@@ -165,8 +122,9 @@ CloseButton.Text = "X"
 CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 CloseButton.TextSize = 16
 
-UICorner3.CornerRadius = UDim.new(0, 15)
-UICorner3.Parent = CloseButton
+local CloseCorner = Instance.new("UICorner")
+CloseCorner.CornerRadius = UDim.new(0, 15)
+CloseCorner.Parent = CloseButton
 
 -- Toggle Button Function
 ToggleButton.MouseButton1Click:Connect(function()
@@ -179,28 +137,32 @@ ToggleButton.MouseButton1Click:Connect(function()
         StatusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
         
         -- Start macro in a new thread
-        macroThread = coroutine.create(runMacro)
-        coroutine.resume(macroThread)
+        task.spawn(runMacro)
         
-        print("Gacha Macro started!")
+        print("Auto Hold Macro started!")
+        print("Hold E: 3 seconds | Delay: 2 seconds")
     else
         ToggleButton.Text = "START MACRO"
         ToggleButton.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
         StatusLabel.Text = "Status: Stopped ⭕"
         StatusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
         
-        print("Gacha Macro stopped!")
+        -- Release key if it's being held
+        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+        
+        print("Auto Hold Macro stopped!")
     end
 end)
 
 -- Close Button Function
 CloseButton.MouseButton1Click:Connect(function()
     macroRunning = false
+    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
     ScreenGui:Destroy()
-    print("Gacha Macro UI closed")
+    print("Auto Hold Macro UI closed")
 end)
 
--- Add glow effect on hover
+-- Hover effects
 ToggleButton.MouseEnter:Connect(function()
     ToggleButton.TextSize = 17
 end)
@@ -217,5 +179,9 @@ CloseButton.MouseLeave:Connect(function()
     CloseButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
 end)
 
-print("Gacha Macro UI loaded successfully!")
-print("Click START MACRO to begin")
+print("===================================")
+print("Auto E Hold Macro Loaded!")
+print("Hold Duration: 3 seconds")
+print("Delay: 2 seconds")
+print("Click START to begin")
+print("===================================")
