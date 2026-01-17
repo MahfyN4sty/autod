@@ -1,453 +1,221 @@
--- Auto Fishing Script with Discord Webhook (Clean Single Status)
--- Hotkey: J = Start/Stop | K = Toggle Mode
+-- Roblox Auto E Press Macro with UI
+-- Paste this script into your executor and run
 
-local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local VirtualInputManager = game:GetService("VirtualInputManager")
+local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local Stats = game:GetService("Stats")
-local HttpService = game:GetService("HttpService")
 
+-- Variables
 local player = Players.LocalPlayer
+local macroRunning = false
+local macroThread = nil
 
--- ===== WEBHOOK DISCORD ANDA =====
-local WEBHOOK_URL = "https://discord.com/api/webhooks/1461393962618060957/JAb0w8aEoWOV77_RCjN0fDhGJU5cbic6ZJQqlPL2JMzMztSQfFckuanMbYMXLTGdnNBN"
--- ================================
-
--- Config
-local config = {
-    enabled = false,
-    autoWinMode = false,
-    antiAFK = true,
-    clickDelay = 0.05,
-    castHoldTime = 0.6,
-    updateInterval = 60, -- Update setiap 60 detik (1 menit)
-    webhookEnabled = true
-}
-
--- Status Variables
-local isMinigameActive = false
-local isCasting = false
-local clickConnection = nil
-local lastCastTime = 0
-local fishCaught = 0
-local wasMinigameActive = false
-local startTime = 0
-local afkRemote = nil
-local lastWebhookUpdate = 0
-local sessionStart = os.date("%Y-%m-%d %H:%M:%S")
-
--- Anti-AFK Loops
-local afkSpamLoop = nil
-local afkMouseLoop = nil
-
--- ===== DISCORD WEBHOOK FUNCTIONS =====
-local function sendWebhookRequest(data)
-    local success = false
-    
-    pcall(function()
-        if http_request then
-            http_request({
-                Url = WEBHOOK_URL,
-                Method = "POST",
-                Headers = {["Content-Type"] = "application/json"},
-                Body = data
-            })
-            success = true
-        end
-    end)
-    
-    if success then return true end
-    
-    pcall(function()
-        if request then
-            request({
-                Url = WEBHOOK_URL,
-                Method = "POST",
-                Headers = {["Content-Type"] = "application/json"},
-                Body = data
-            })
-            success = true
-        end
-    end)
-    
-    if success then return true end
-    
-    pcall(function()
-        if syn and syn.request then
-            syn.request({
-                Url = WEBHOOK_URL,
-                Method = "POST",
-                Headers = {["Content-Type"] = "application/json"},
-                Body = data
-            })
-            success = true
-        end
-    end)
-    
-    return success
+-- Function to simulate key press
+local function pressKey(key, duration)
+    if not macroRunning then return end
+    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode[key], false, game)
+    wait(duration or 0.03)
+    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode[key], false, game)
 end
 
-local function sendWebhook(title, description, color, fields)
-    if not config.webhookEnabled then return end
-    
-    local embed = {
-        ["title"] = title,
-        ["description"] = description,
-        ["color"] = color or 3447003,
-        ["fields"] = fields or {},
-        ["footer"] = {
-            ["text"] = "Auto Fish Bot • " .. player.Name
-        },
-        ["timestamp"] = os.date("!%Y-%m-%dT%H:%M:%SZ")
-    }
-    
-    local data = {
-        ["embeds"] = {embed}
-    }
-    
-    local jsonData = HttpService:JSONEncode(data)
-    sendWebhookRequest(jsonData)
+-- Function to wait (delay in milliseconds converted to seconds)
+local function delay(ms)
+    if not macroRunning then return end
+    wait(ms / 1000)
 end
 
-local function sendStatusUpdate()
-    if not config.enabled then return end
-    
-    local runtime = math.floor(tick() - startTime)
-    local hours = math.floor(runtime / 3600)
-    local minutes = math.floor((runtime % 3600) / 60)
-    local secs = runtime % 60
-    local timeStr = string.format("%02dh %02dm %02ds", hours, minutes, secs)
-    
-    local fps = 0
-    pcall(function()
-        fps = math.floor(1 / RunService.Heartbeat:Wait())
-    end)
-    
-    local ping = 0
-    pcall(function()
-        ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
-    end)
-    
-    local fishPerHour = runtime > 0 and math.floor(fishCaught / (runtime / 3600)) or 0
-    
-    local fields = {
-        {name = "📊 Status", value = "```yaml\n✅ AKTIF BERJALAN```", inline = false},
-        {name = "⚙️ Mode", value = "```" .. (config.autoWinMode and "Auto Win" or "Tap-Tap") .. "```", inline = true},
-        {name = "🎣 Ikan", value = "```" .. tostring(fishCaught) .. "```", inline = true},
-        {name = "⏱️ Runtime", value = "```" .. timeStr .. "```", inline = true},
-        {name = "📈 Ikan/Jam", value = "```" .. tostring(fishPerHour) .. "```", inline = true},
-        {name = "🖥️ FPS", value = "```" .. tostring(fps) .. "```", inline = true},
-        {name = "📡 Ping", value = "```" .. tostring(ping) .. "ms```", inline = true},
-        {name = "🕐 Mulai", value = "```" .. sessionStart .. "```", inline = false}
-    }
-    
-    sendWebhook(
-        "🎣 Auto Fishing - Status Update",
-        "*Live monitoring - Update setiap " .. config.updateInterval .. " detik*",
-        16776960,
-        fields
-    )
-end
-
-local function sendStartMessage()
-    local fields = {
-        {name = "👤 Player", value = "```" .. player.Name .. "```", inline = true},
-        {name = "⚙️ Mode", value = "```" .. (config.autoWinMode and "Auto Win" or "Tap-Tap") .. "```", inline = true},
-        {name = "🕐 Session Start", value = "```" .. sessionStart .. "```", inline = false},
-        {name = "⚡ Kontrol", value = "```J = Start/Stop\nK = Toggle Mode```", inline = false}
-    }
-    
-    sendWebhook(
-        "🎣 Auto Fishing Started",
-        "**Bot telah diaktifkan!**\nStatus akan di-update secara berkala.",
-        3066993,
-        fields
-    )
-end
-
-local function sendStopMessage()
-    local runtime = math.floor(tick() - startTime)
-    local hours = math.floor(runtime / 3600)
-    local minutes = math.floor((runtime % 3600) / 60)
-    local secs = runtime % 60
-    local timeStr = string.format("%02dh %02dm %02ds", hours, minutes, secs)
-    
-    local fishPerHour = runtime > 0 and math.floor(fishCaught / (runtime / 3600)) or 0
-    
-    local fields = {
-        {name = "🎣 Total Ikan", value = "```" .. tostring(fishCaught) .. "```", inline = true},
-        {name = "⏱️ Runtime", value = "```" .. timeStr .. "```", inline = true},
-        {name = "📈 Ikan/Jam", value = "```" .. tostring(fishPerHour) .. "```", inline = true},
-        {name = "📊 Summary", value = "```yaml\nBot telah dihentikan\nSesi selesai```", inline = false}
-    }
-    
-    sendWebhook(
-        "🛑 Auto Fishing Stopped",
-        "**Bot telah dinonaktifkan**",
-        15158332,
-        fields
-    )
-end
-
-local function sendModeChange()
-    if not config.enabled then return end
-    
-    local runtime = math.floor(tick() - startTime)
-    local hours = math.floor(runtime / 3600)
-    local minutes = math.floor((runtime % 3600) / 60)
-    local secs = runtime % 60
-    local timeStr = string.format("%02dh %02dm %02ds", hours, minutes, secs)
-    
-    local fields = {
-        {name = "⚙️ Mode Baru", value = "```" .. (config.autoWinMode and "Auto Win" or "Tap-Tap") .. "```", inline = true},
-        {name = "🎣 Ikan", value = "```" .. tostring(fishCaught) .. "```", inline = true},
-        {name = "⏱️ Runtime", value = "```" .. timeStr .. "```", inline = true}
-    }
-    
-    sendWebhook(
-        "⚙️ Mode Changed",
-        "**Mode fishing telah diubah**",
-        10181046,
-        fields
-    )
-end
-
--- ===== ANTI-AFK SYSTEM =====
-local function findAFKRemote()
-    afkRemote = ReplicatedStorage:FindFirstChild("AFK")
-    if not afkRemote then
-        task.wait(2)
-        afkRemote = ReplicatedStorage:FindFirstChild("AFK")
-    end
-    return afkRemote
-end
-
-local function startAntiAFK()
-    if not afkRemote then
-        findAFKRemote()
-    end
-    
-    if not afkRemote then
-        return
-    end
-    
-    UserInputService.WindowFocusReleased:Connect(function()
-        if config.enabled then
-            pcall(function() afkRemote:FireServer(false) end)
-        end
-    end)
-    
-    UserInputService.WindowFocused:Connect(function()
-        if config.enabled then
-            pcall(function() afkRemote:FireServer(false) end)
-        end
-    end)
-    
-    if afkSpamLoop then
-        task.cancel(afkSpamLoop)
-    end
-    
-    afkSpamLoop = task.spawn(function()
-        while config.enabled do
-            task.wait(1)
-            pcall(function() afkRemote:FireServer(false) end)
-        end
-    end)
-    
-    if afkMouseLoop then
-        task.cancel(afkMouseLoop)
-    end
-    
-    afkMouseLoop = task.spawn(function()
-        while config.enabled do
-            task.wait(3)
-            local vp = workspace.CurrentCamera.ViewportSize
-            pcall(function()
-                VirtualInputManager:SendMouseMoveEvent(
-                    vp.X/2 + math.random(-2, 2),
-                    vp.Y/2 + math.random(-2, 2),
-                    game
-                )
-            end)
-        end
-    end)
-end
-
-local function stopAntiAFK()
-    if afkSpamLoop then
-        task.cancel(afkSpamLoop)
-        afkSpamLoop = nil
-    end
-    if afkMouseLoop then
-        task.cancel(afkMouseLoop)
-        afkMouseLoop = nil
-    end
-end
-
--- ===== FISHING FUNCTIONS =====
-local function holdClick(duration)
-    local center = workspace.CurrentCamera.ViewportSize / 2
-    VirtualInputManager:SendMouseButtonEvent(center.X, center.Y, 0, true, game, 0)
-    task.wait(duration)
-    VirtualInputManager:SendMouseButtonEvent(center.X, center.Y, 0, false, game, 0)
-end
-
-local function castFishingRod()
-    if isCasting then return end
-    isCasting = true
-    holdClick(config.castHoldTime)
-    lastCastTime = tick()
-    task.wait(0.5)
-    isCasting = false
-end
-
-local function quickTap()
-    local center = workspace.CurrentCamera.ViewportSize / 2
-    VirtualInputManager:SendMouseButtonEvent(center.X, center.Y, 0, true, game, 0)
-    task.wait(0.01)
-    VirtualInputManager:SendMouseButtonEvent(center.X, center.Y, 0, false, game, 0)
-end
-
-local function detectMinigame()
-    local playerGui = player:WaitForChild("PlayerGui")
-    local miniGameGui = playerGui:FindFirstChild("MiniGameGUI")
-    if miniGameGui then
-        local bg = miniGameGui:FindFirstChild("Background")
-        if bg then
-            local filler = bg:FindFirstChild("Filler")
-            return filler ~= nil, filler
-        end
-    end
-    return false, nil
-end
-
-local function startAutoClick()
-    if clickConnection then clickConnection:Disconnect() end
-    
-    clickConnection = RunService.Heartbeat:Connect(function()
-        if not config.enabled or isCasting then return end
+-- Macro sequence function
+local function runMacro()
+    while macroRunning do
+        delay(460)
+        pressKey("E") delay(502)
+        pressKey("E") delay(47)
+        pressKey("E") delay(37)
+        pressKey("E") delay(24)
+        pressKey("E") delay(31)
+        pressKey("E") delay(31)
+        pressKey("E") delay(31)
+        pressKey("E") delay(34)
+        pressKey("E") delay(28)
+        pressKey("E") delay(46)
+        pressKey("E") delay(31)
+        pressKey("E") delay(31)
+        pressKey("E") delay(31)
+        pressKey("E") delay(31)
+        pressKey("E") delay(31)
+        pressKey("E") delay(31)
+        pressKey("E") delay(46)
+        pressKey("E") delay(31)
+        pressKey("E") delay(31)
+        pressKey("E") delay(30)
+        pressKey("E") delay(31)
+        pressKey("E") delay(31)
+        pressKey("E") delay(30)
+        pressKey("E") delay(47)
+        pressKey("E") delay(31)
+        pressKey("E") delay(30)
+        pressKey("E") delay(31)
+        pressKey("E") delay(31)
+        pressKey("E") delay(31)
+        pressKey("E") delay(31)
+        pressKey("E") delay(46)
+        pressKey("E") delay(31)
+        pressKey("E") delay(31)
+        pressKey("E") delay(30)
+        pressKey("E") delay(31)
+        pressKey("E") delay(31)
+        pressKey("E") delay(31)
+        pressKey("E") delay(46)
+        pressKey("E") delay(31)
+        pressKey("E") delay(31)
+        pressKey("E") delay(31)
+        pressKey("E") delay(31)
+        pressKey("E") delay(31)
+        pressKey("E") delay(31)
+        pressKey("E") delay(31)
+        pressKey("E") delay(48)
+        pressKey("E") delay(30)
+        pressKey("E") delay(31)
+        pressKey("E") delay(31)
+        pressKey("E") delay(32)
+        pressKey("E") delay(30)
+        pressKey("E") delay(31)
+        pressKey("E") delay(31)
         
-        local active, filler = detectMinigame()
-        
-        if wasMinigameActive and not active then
-            fishCaught = fishCaught + 1
-        end
-        
-        wasMinigameActive = active
-        isMinigameActive = active
-        
-        if active and filler then
-            if config.autoWinMode then
-                if filler.Size.X.Scale < 0.99 then
-                    filler.Size = UDim2.new(0.99, 0, 1, 0)
-                    task.wait(0.05)
-                    quickTap()
-                    task.wait(0.5)
-                end
-            else
-                if filler.Size.X.Scale < 1 then
-                    quickTap()
-                    task.wait(config.clickDelay)
-                end
-            end
-        end
-    end)
+        delay(460)
+        delay(2460)
+        delay(460)
+    end
 end
 
-local function monitorRecast()
-    task.spawn(function()
-        while config.enabled do
-            task.wait(1)
-            if not isMinigameActive and not isCasting then
-                local active = detectMinigame()
-                if not active and tick() - lastCastTime >= 1 then
-                    castFishingRod()
-                end
-            end
-        end
-    end)
-end
+-- Create UI
+local ScreenGui = Instance.new("ScreenGui")
+local MainFrame = Instance.new("Frame")
+local Title = Instance.new("TextLabel")
+local ToggleButton = Instance.new("TextButton")
+local StatusLabel = Instance.new("TextLabel")
+local CloseButton = Instance.new("TextButton")
+local UICorner1 = Instance.new("UICorner")
+local UICorner2 = Instance.new("UICorner")
+local UICorner3 = Instance.new("UICorner")
 
-local function updateLoop()
-    task.spawn(function()
-        while config.enabled do
-            task.wait(1)
-            if tick() - lastWebhookUpdate >= config.updateInterval then
-                sendStatusUpdate()
-                lastWebhookUpdate = tick()
-            end
-        end
-    end)
-end
+-- Properties
+ScreenGui.Name = "GachaMacroUI"
+ScreenGui.Parent = player:WaitForChild("PlayerGui")
+ScreenGui.ResetOnSpawn = false
 
--- ===== TOGGLE FUNCTIONS =====
-local function toggleScript()
-    config.enabled = not config.enabled
+MainFrame.Name = "MainFrame"
+MainFrame.Parent = ScreenGui
+MainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+MainFrame.BorderSizePixel = 0
+MainFrame.Position = UDim2.new(0.5, -150, 0.5, -100)
+MainFrame.Size = UDim2.new(0, 300, 0, 200)
+MainFrame.Active = true
+MainFrame.Draggable = true
+
+UICorner1.CornerRadius = UDim.new(0, 10)
+UICorner1.Parent = MainFrame
+
+Title.Name = "Title"
+Title.Parent = MainFrame
+Title.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
+Title.BorderSizePixel = 0
+Title.Size = UDim2.new(1, 0, 0, 40)
+Title.Font = Enum.Font.GothamBold
+Title.Text = "🎮 Gacha Macro"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.TextSize = 18
+
+local TitleCorner = Instance.new("UICorner")
+TitleCorner.CornerRadius = UDim.new(0, 10)
+TitleCorner.Parent = Title
+
+ToggleButton.Name = "ToggleButton"
+ToggleButton.Parent = MainFrame
+ToggleButton.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
+ToggleButton.BorderSizePixel = 0
+ToggleButton.Position = UDim2.new(0.1, 0, 0.35, 0)
+ToggleButton.Size = UDim2.new(0.8, 0, 0, 45)
+ToggleButton.Font = Enum.Font.GothamBold
+ToggleButton.Text = "START MACRO"
+ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleButton.TextSize = 16
+
+UICorner2.CornerRadius = UDim.new(0, 8)
+UICorner2.Parent = ToggleButton
+
+StatusLabel.Name = "StatusLabel"
+StatusLabel.Parent = MainFrame
+StatusLabel.BackgroundTransparency = 1
+StatusLabel.Position = UDim2.new(0, 0, 0.65, 0)
+StatusLabel.Size = UDim2.new(1, 0, 0, 30)
+StatusLabel.Font = Enum.Font.Gotham
+StatusLabel.Text = "Status: Stopped ⭕"
+StatusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+StatusLabel.TextSize = 14
+
+CloseButton.Name = "CloseButton"
+CloseButton.Parent = MainFrame
+CloseButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+CloseButton.BorderSizePixel = 0
+CloseButton.Position = UDim2.new(0.85, 0, 0.05, 0)
+CloseButton.Size = UDim2.new(0, 30, 0, 30)
+CloseButton.Font = Enum.Font.GothamBold
+CloseButton.Text = "X"
+CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseButton.TextSize = 16
+
+UICorner3.CornerRadius = UDim.new(0, 15)
+UICorner3.Parent = CloseButton
+
+-- Toggle Button Function
+ToggleButton.MouseButton1Click:Connect(function()
+    macroRunning = not macroRunning
     
-    if config.enabled then
-        fishCaught = 0
-        startTime = tick()
-        lastWebhookUpdate = tick()
-        sessionStart = os.date("%Y-%m-%d %H:%M:%S")
+    if macroRunning then
+        ToggleButton.Text = "STOP MACRO"
+        ToggleButton.BackgroundColor3 = Color3.fromRGB(50, 220, 50)
+        StatusLabel.Text = "Status: Running ✅"
+        StatusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
         
-        sendStartMessage()
-        startAutoClick()
-        monitorRecast()
-        startAntiAFK()
-        updateLoop()
-        task.wait(0.5)
-        castFishingRod()
+        -- Start macro in a new thread
+        macroThread = coroutine.create(runMacro)
+        coroutine.resume(macroThread)
+        
+        print("Gacha Macro started!")
     else
-        sendStopMessage()
-        if clickConnection then clickConnection:Disconnect() end
-        stopAntiAFK()
-    end
-end
-
-local function toggleMode()
-    config.autoWinMode = not config.autoWinMode
-    if config.enabled then
-        sendModeChange()
-    end
-end
-
--- ===== HOTKEYS =====
-UserInputService.InputBegan:Connect(function(input, gpe)
-    if gpe then return end
-    
-    if input.KeyCode == Enum.KeyCode.J then
-        toggleScript()
-    elseif input.KeyCode == Enum.KeyCode.K then
-        toggleMode()
+        ToggleButton.Text = "START MACRO"
+        ToggleButton.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
+        StatusLabel.Text = "Status: Stopped ⭕"
+        StatusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+        
+        print("Gacha Macro stopped!")
     end
 end)
 
--- ===== INITIALIZE =====
-task.spawn(function()
-    findAFKRemote()
+-- Close Button Function
+CloseButton.MouseButton1Click:Connect(function()
+    macroRunning = false
+    ScreenGui:Destroy()
+    print("Gacha Macro UI closed")
 end)
 
--- ===== PESAN ATTACH EXECUTOR =====
-local function sendAttachMessage()
-    local currentTime = os.date("%Y-%m-%d %H:%M:%S")
-    
-    local fields = {
-        {name = "👤 Player", value = "```" .. player.Name .. "```", inline = true},
-        {name = "🕐 Waktu Attach", value = "```" .. currentTime .. "```", inline = true},
-        {name = "⚡ Kontrol", value = "```J = Start/Stop\nK = Toggle Mode```", inline = false},
-        {name = "📋 Status", value = "```yaml\nScript berhasil di-attach\nSiap digunakan```", inline = false}
-    }
-    
-    sendWebhook(
-        "🤖 Script Attached Successfully",
-        "**Auto Fishing Script telah di-attach ke executor!**\nTekan **J** untuk memulai bot.",
-        5763719, -- Warna biru/hijau
-        fields
-    )
-end
+-- Add glow effect on hover
+ToggleButton.MouseEnter:Connect(function()
+    ToggleButton.TextSize = 17
+end)
 
--- Kirim pesan attach setelah 2 detik (tunggu semua service siap)
-task.wait(2)
-sendAttachMessage()
+ToggleButton.MouseLeave:Connect(function()
+    ToggleButton.TextSize = 16
+end)
+
+CloseButton.MouseEnter:Connect(function()
+    CloseButton.BackgroundColor3 = Color3.fromRGB(255, 70, 70)
+end)
+
+CloseButton.MouseLeave:Connect(function()
+    CloseButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+end)
+
+print("Gacha Macro UI loaded successfully!")
+print("Click START MACRO to begin")
