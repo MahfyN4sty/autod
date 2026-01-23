@@ -289,27 +289,24 @@ end
 -- ===== FISHING FUNCTIONS =====
 local function holdClick(duration)
     local playerGui = player:WaitForChild("PlayerGui")
-    local fishingRodGUI = playerGui:FindFirstChild("FishingRodGUI")
+    
+    -- Path yang benar: FishingRodGUI → Background → ImageLabel
+    local fishingRodGUI = playerGui:WaitForChild("FishingRodGUI", 2)
     
     if fishingRodGUI then
         local background = fishingRodGUI:FindFirstChild("Background")
         if background then
             local imageLabel = background:FindFirstChild("ImageLabel")
-            if imageLabel and imageLabel:IsA("GuiButton") then
-                -- Klik langsung ke GuiButton
-                for i = 1, math.floor(duration / 0.01) do
-                    imageLabel.MouseButton1Down:Fire()
-                    task.wait(0.01)
-                end
-                imageLabel.MouseButton1Up:Fire()
-                return
-            elseif imageLabel then
-                -- Gunakan posisi absolut ImageLabel
+            if imageLabel then
+                -- Dapatkan posisi absolut ImageLabel
                 local absolutePos = imageLabel.AbsolutePosition
                 local absoluteSize = imageLabel.AbsoluteSize
+                
+                -- Klik di tengah ImageLabel (area biru)
                 local clickX = absolutePos.X + (absoluteSize.X / 2)
                 local clickY = absolutePos.Y + (absoluteSize.Y / 2)
                 
+                -- Hold click
                 VirtualInputManager:SendMouseButtonEvent(clickX, clickY, 0, true, game, 0)
                 task.wait(duration)
                 VirtualInputManager:SendMouseButtonEvent(clickX, clickY, 0, false, game, 0)
@@ -318,14 +315,21 @@ local function holdClick(duration)
         end
     end
     
-    -- Fallback
+    -- Fallback ke center layar jika UI tidak ditemukan
     local center = workspace.CurrentCamera.ViewportSize / 2
     VirtualInputManager:SendMouseButtonEvent(center.X, center.Y, 0, true, game, 0)
     task.wait(duration)
     VirtualInputManager:SendMouseButtonEvent(center.X, center.Y, 0, false, game, 0)
 end
 
--- =====DIATAS UPDATE (Sedang di Tes)======
+local function castFishingRod()
+    if isCasting then return end
+    isCasting = true
+    holdClick(config.castHoldTime)
+    lastCastTime = tick()
+    task.wait(0.5)
+    isCasting = false
+end
 
 local function quickTap()
     local center = workspace.CurrentCamera.ViewportSize / 2
@@ -467,7 +471,7 @@ local function sendAttachMessage()
     sendWebhook(
         "🤖 Script Attached Successfully",
         "**Auto Fishing Script telah di-attach ke executor!**\nTekan **J** untuk memulai bot.",
-        5763719, -- Warna biru/hijau
+        5763719,
         fields
     )
 end
