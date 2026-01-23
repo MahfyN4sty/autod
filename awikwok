@@ -287,7 +287,7 @@ local function stopAntiAFK()
 end
 
 -- ===== FISHING FUNCTIONS =====
-local function getBlueAreaPosition()
+local function holdClick(duration)
     local playerGui = player:WaitForChild("PlayerGui")
     local fishingRodGUI = playerGui:FindFirstChild("FishingRodGUI")
     
@@ -295,30 +295,34 @@ local function getBlueAreaPosition()
         local background = fishingRodGUI:FindFirstChild("Background")
         if background then
             local imageLabel = background:FindFirstChild("ImageLabel")
-            if imageLabel then
-                -- Dapatkan posisi absolut dari ImageLabel
+            if imageLabel and imageLabel:IsA("GuiButton") then
+                -- Klik langsung ke GuiButton
+                for i = 1, math.floor(duration / 0.01) do
+                    imageLabel.MouseButton1Down:Fire()
+                    task.wait(0.01)
+                end
+                imageLabel.MouseButton1Up:Fire()
+                return
+            elseif imageLabel then
+                -- Gunakan posisi absolut ImageLabel
                 local absolutePos = imageLabel.AbsolutePosition
                 local absoluteSize = imageLabel.AbsoluteSize
-                
-                -- Klik di tengah area biru
                 local clickX = absolutePos.X + (absoluteSize.X / 2)
                 local clickY = absolutePos.Y + (absoluteSize.Y / 2)
                 
-                return clickX, clickY
+                VirtualInputManager:SendMouseButtonEvent(clickX, clickY, 0, true, game, 0)
+                task.wait(duration)
+                VirtualInputManager:SendMouseButtonEvent(clickX, clickY, 0, false, game, 0)
+                return
             end
         end
     end
     
-    -- Fallback ke tengah layar jika UI tidak ditemukan
+    -- Fallback
     local center = workspace.CurrentCamera.ViewportSize / 2
-    return center.X, center.Y
-end
-
-local function holdClick(duration)
-    local clickX, clickY = getBlueAreaPosition()
-    VirtualInputManager:SendMouseButtonEvent(clickX, clickY, 0, true, game, 0)
+    VirtualInputManager:SendMouseButtonEvent(center.X, center.Y, 0, true, game, 0)
     task.wait(duration)
-    VirtualInputManager:SendMouseButtonEvent(clickX, clickY, 0, false, game, 0)
+    VirtualInputManager:SendMouseButtonEvent(center.X, center.Y, 0, false, game, 0)
 end
 
 -- =====DIATAS UPDATE (Sedang di Tes)======
