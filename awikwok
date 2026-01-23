@@ -287,21 +287,41 @@ local function stopAntiAFK()
 end
 
 -- ===== FISHING FUNCTIONS =====
-local function holdClick(duration)
+local function getBlueAreaPosition()
+    local playerGui = player:WaitForChild("PlayerGui")
+    local fishingRodGUI = playerGui:FindFirstChild("FishingRodGUI")
+    
+    if fishingRodGUI then
+        local background = fishingRodGUI:FindFirstChild("Background")
+        if background then
+            local imageLabel = background:FindFirstChild("ImageLabel")
+            if imageLabel then
+                -- Dapatkan posisi absolut dari ImageLabel
+                local absolutePos = imageLabel.AbsolutePosition
+                local absoluteSize = imageLabel.AbsoluteSize
+                
+                -- Klik di tengah area biru
+                local clickX = absolutePos.X + (absoluteSize.X / 2)
+                local clickY = absolutePos.Y + (absoluteSize.Y / 2)
+                
+                return clickX, clickY
+            end
+        end
+    end
+    
+    -- Fallback ke tengah layar jika UI tidak ditemukan
     local center = workspace.CurrentCamera.ViewportSize / 2
-    VirtualInputManager:SendMouseButtonEvent(center.X, center.Y, 0, true, game, 0)
-    task.wait(duration)
-    VirtualInputManager:SendMouseButtonEvent(center.X, center.Y, 0, false, game, 0)
+    return center.X, center.Y
 end
 
-local function castFishingRod()
-    if isCasting then return end
-    isCasting = true
-    holdClick(config.castHoldTime)
-    lastCastTime = tick()
-    task.wait(0.5)
-    isCasting = false
+local function holdClick(duration)
+    local clickX, clickY = getBlueAreaPosition()
+    VirtualInputManager:SendMouseButtonEvent(clickX, clickY, 0, true, game, 0)
+    task.wait(duration)
+    VirtualInputManager:SendMouseButtonEvent(clickX, clickY, 0, false, game, 0)
 end
+
+-- =====DIATAS UPDATE (Sedang di Tes)======
 
 local function quickTap()
     local center = workspace.CurrentCamera.ViewportSize / 2
