@@ -302,9 +302,9 @@ local function holdClick(duration)
                 local absolutePos = imageLabel.AbsolutePosition
                 local absoluteSize = imageLabel.AbsoluteSize
                 
-                -- Klik di tengah ImageLabel (area biru)
+                -- Klik di bagian bawah ImageLabel (area kail) dengan offset ke bawah
                 local clickX = absolutePos.X + (absoluteSize.X / 2)
-                local clickY = absolutePos.Y + (absoluteSize.Y / 2)
+                local clickY = absolutePos.Y + absoluteSize.Y + 30 -- Offset 30 pixel ke bawah dari ImageLabel
                 
                 -- Hold click
                 VirtualInputManager:SendMouseButtonEvent(clickX, clickY, 0, true, game, 0)
