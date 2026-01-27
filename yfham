@@ -1,5 +1,11 @@
--- Auto Fishing Script - No Lag Optimized Version
--- Hotkey: J = Toggle GUI | K = Start/Stop
+-- Auto Fishing Script - F-SPAM + Webhook + GUI (Complete Edition)
+
+-- ===== ANTI-DOUBLE SCRIPT SYSTEM =====
+local scriptIdentifier = "AutoFishingCompleteVersion"
+if _G[scriptIdentifier] then
+    _G[scriptIdentifier]:Destroy()
+    task.wait(0.5)
+end
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -19,25 +25,29 @@ local WEBHOOK_URL = "https://discord.com/api/webhooks/1461393962618060957/JAb0w8
 -- Config
 local config = {
     enabled = false,
-    autoWinMode = false,
+    ultraFastMode = false,
     antiAFK = true,
-    castHoldTime = 0.7,
-    updateInterval = 60,
+    castHoldTime = 0.6,
+    fSpamSpeed = 0.015,      -- Normal: 66 F/sec
+    fSpamSpeedFast = 0.005,  -- Ultra: 200 F/sec
+    updateInterval = 60,      -- Webhook update every 60 seconds
     webhookEnabled = true
 }
 
 -- Status Variables
 local isMinigameActive = false
 local isCasting = false
-local clickConnection = nil
+local fSpamLoop = nil
 local lastCastTime = 0
 local fishCaught = 0
-local wasMinigameActive = false
 local startTime = 0
 local stoppedTime = 0
 local afkRemote = nil
+local fPressCount = 0
 local lastWebhookUpdate = 0
 local sessionStart = os.date("%Y-%m-%d %H:%M:%S")
+local wasInMinigame = false
+local lastActionTime = 0
 
 -- Anti-AFK Loops
 local afkSpamLoop = nil
@@ -45,83 +55,76 @@ local afkMouseLoop = nil
 
 -- GUI Reference
 local toggleBtn = nil
+local modeBtn = nil
 local statsLabel = nil
-
--- Cache untuk UI elements (mengurangi FindFirstChild berulang)
-local fishingRodGUI = nil
-local miniGameGUI = nil
-local imageLabel = nil
-local lastUICheck = 0
-local uiCheckInterval = 0.5
 
 -- ===== DISCORD WEBHOOK FUNCTIONS =====
 local function sendWebhookRequest(data)
-    task.spawn(function() -- Async untuk tidak block main thread
-        local success = false
-        
-        pcall(function()
-            if http_request then
-                http_request({
-                    Url = WEBHOOK_URL,
-                    Method = "POST",
-                    Headers = {["Content-Type"] = "application/json"},
-                    Body = data
-                })
-                success = true
-            end
-        end)
-        
-        if success then return end
-        
-        pcall(function()
-            if request then
-                request({
-                    Url = WEBHOOK_URL,
-                    Method = "POST",
-                    Headers = {["Content-Type"] = "application/json"},
-                    Body = data
-                })
-                success = true
-            end
-        end)
-        
-        if success then return end
-        
-        pcall(function()
-            if syn and syn.request then
-                syn.request({
-                    Url = WEBHOOK_URL,
-                    Method = "POST",
-                    Headers = {["Content-Type"] = "application/json"},
-                    Body = data
-                })
-            end
-        end)
+    local success = false
+    
+    pcall(function()
+        if http_request then
+            http_request({
+                Url = WEBHOOK_URL,
+                Method = "POST",
+                Headers = {["Content-Type"] = "application/json"},
+                Body = data
+            })
+            success = true
+        end
     end)
+    
+    if success then return true end
+    
+    pcall(function()
+        if request then
+            request({
+                Url = WEBHOOK_URL,
+                Method = "POST",
+                Headers = {["Content-Type"] = "application/json"},
+                Body = data
+            })
+            success = true
+        end
+    end)
+    
+    if success then return true end
+    
+    pcall(function()
+        if syn and syn.request then
+            syn.request({
+                Url = WEBHOOK_URL,
+                Method = "POST",
+                Headers = {["Content-Type"] = "application/json"},
+                Body = data
+            })
+            success = true
+        end
+    end)
+    
+    return success
 end
 
 local function sendWebhook(title, description, color, fields)
     if not config.webhookEnabled then return end
     
-    task.spawn(function() -- Async webhook
-        local embed = {
-            ["title"] = title,
-            ["description"] = description,
-            ["color"] = color or 3447003,
-            ["fields"] = fields or {},
-            ["footer"] = {
-                ["text"] = "Auto Fish Bot • " .. player.Name
-            },
-            ["timestamp"] = os.date("!%Y-%m-%dT%H:%M:%SZ")
-        }
-        
-        local data = {
-            ["embeds"] = {embed}
-        }
-        
-        local jsonData = HttpService:JSONEncode(data)
-        sendWebhookRequest(jsonData)
-    end)
+    local embed = {
+        ["title"] = title,
+        ["description"] = description,
+        ["color"] = color or 3447003,
+        ["fields"] = fields or {},
+        ["footer"] = {
+            ["text"] = "Auto Fish Bot • " .. player.Name
+        },
+        ["timestamp"] = os.date("!%Y-%m-%dT%H:%M:%SZ")
+    }
+    
+    local data = {
+        ["embeds"] = {embed}
+    }
+    
+    local jsonData = HttpService:JSONEncode(data)
+    sendWebhookRequest(jsonData)
 end
 
 local function sendStatusUpdate()
@@ -133,21 +136,27 @@ local function sendStatusUpdate()
     local secs = runtime % 60
     local timeStr = string.format("%02dh %02dm %02ds", hours, minutes, secs)
     
-    local fps = 60 -- Default value untuk menghindari lag dari calculation
-    local ping = 0
+    local fps = 0
+    pcall(function()
+        fps = math.floor(1 / RunService.Heartbeat:Wait())
+    end)
     
+    local ping = 0
     pcall(function()
         ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
     end)
     
     local fishPerHour = runtime > 0 and math.floor(fishCaught / (runtime / 3600)) or 0
     
+    local speedMode = config.ultraFastMode and "⚡ Ultra Fast (200/s)" or "⌨️ Normal (66/s)"
+    
     local fields = {
         {name = "📊 Status", value = "```yaml\n✅ AKTIF BERJALAN```", inline = false},
-        {name = "⚙️ Mode", value = "```" .. (config.autoWinMode and "Auto Win" or "Tap-Tap") .. "```", inline = true},
+        {name = "⚙️ Speed Mode", value = "```" .. speedMode .. "```", inline = false},
         {name = "🎣 Ikan", value = "```" .. tostring(fishCaught) .. "```", inline = true},
         {name = "⏱️ Runtime", value = "```" .. timeStr .. "```", inline = true},
         {name = "📈 Ikan/Jam", value = "```" .. tostring(fishPerHour) .. "```", inline = true},
+        {name = "🖥️ FPS", value = "```" .. tostring(fps) .. "```", inline = true},
         {name = "📡 Ping", value = "```" .. tostring(ping) .. "ms```", inline = true},
         {name = "🕐 Mulai", value = "```" .. sessionStart .. "```", inline = false}
     }
@@ -161,11 +170,13 @@ local function sendStatusUpdate()
 end
 
 local function sendStartMessage()
+    local speedMode = config.ultraFastMode and "⚡ Ultra Fast (200/s)" or "⌨️ Normal (66/s)"
+    
     local fields = {
         {name = "👤 Player", value = "```" .. player.Name .. "```", inline = true},
-        {name = "⚙️ Mode", value = "```" .. (config.autoWinMode and "Auto Win" or "Tap-Tap") .. "```", inline = true},
+        {name = "⚙️ Speed", value = "```" .. speedMode .. "```", inline = true},
         {name = "🕐 Session Start", value = "```" .. sessionStart .. "```", inline = false},
-        {name = "⚡ Kontrol", value = "```J = Toggle GUI\nK = Start/Stop```", inline = false}
+        {name = "⚡ Kontrol", value = "```J = Start/Stop\nK = Hide GUI```", inline = false}
     }
     
     sendWebhook(
@@ -200,8 +211,10 @@ local function sendStopMessage()
     )
 end
 
-local function sendModeChange()
+local function sendSpeedChange()
     if not config.enabled then return end
+    
+    local speedMode = config.ultraFastMode and "⚡ Ultra Fast (200/s)" or "⌨️ Normal (66/s)"
     
     local runtime = math.floor(tick() - startTime)
     local hours = math.floor(runtime / 3600)
@@ -210,15 +223,33 @@ local function sendModeChange()
     local timeStr = string.format("%02dh %02dm %02ds", hours, minutes, secs)
     
     local fields = {
-        {name = "⚙️ Mode Baru", value = "```" .. (config.autoWinMode and "Auto Win" or "Tap-Tap") .. "```", inline = true},
+        {name = "⚙️ Speed Baru", value = "```" .. speedMode .. "```", inline = true},
         {name = "🎣 Ikan", value = "```" .. tostring(fishCaught) .. "```", inline = true},
         {name = "⏱️ Runtime", value = "```" .. timeStr .. "```", inline = true}
     }
     
     sendWebhook(
-        "⚙️ Mode Changed",
-        "**Mode fishing telah diubah**",
+        "⚡ Speed Changed",
+        "**Kecepatan F-spam telah diubah**",
         10181046,
+        fields
+    )
+end
+
+local function sendAttachMessage()
+    local currentTime = os.date("%Y-%m-%d %H:%M:%S")
+    
+    local fields = {
+        {name = "👤 Player", value = "```" .. player.Name .. "```", inline = true},
+        {name = "🕐 Waktu Attach", value = "```" .. currentTime .. "```", inline = true},
+        {name = "⚡ Kontrol", value = "```GUI: Click buttons\nHotkey J = Start/Stop\nHotkey K = Hide GUI```", inline = false},
+        {name = "📋 Status", value = "```yaml\nScript berhasil di-attach\nGUI & Webhook aktif```", inline = false}
+    }
+    
+    sendWebhook(
+        "🤖 Script Attached Successfully",
+        "**Auto Fishing Script dengan GUI & Webhook telah di-attach!**",
+        5763719,
         fields
     )
 end
@@ -234,13 +265,8 @@ local function findAFKRemote()
 end
 
 local function startAntiAFK()
-    if not afkRemote then
-        findAFKRemote()
-    end
-    
-    if not afkRemote then
-        return
-    end
+    if not afkRemote then findAFKRemote() end
+    if not afkRemote then return end
     
     UserInputService.WindowFocusReleased:Connect(function()
         if config.enabled then
@@ -254,24 +280,20 @@ local function startAntiAFK()
         end
     end)
     
-    if afkSpamLoop then
-        task.cancel(afkSpamLoop)
-    end
+    if afkSpamLoop then task.cancel(afkSpamLoop) end
     
     afkSpamLoop = task.spawn(function()
         while config.enabled do
-            task.wait(2) -- Kurangi frequency untuk mengurangi lag
+            task.wait(1)
             pcall(function() afkRemote:FireServer(false) end)
         end
     end)
     
-    if afkMouseLoop then
-        task.cancel(afkMouseLoop)
-    end
+    if afkMouseLoop then task.cancel(afkMouseLoop) end
     
     afkMouseLoop = task.spawn(function()
         while config.enabled do
-            task.wait(5) -- Kurangi frequency
+            task.wait(3)
             local vp = workspace.CurrentCamera.ViewportSize
             pcall(function()
                 VirtualInputManager:SendMouseMoveEvent(
@@ -295,49 +317,30 @@ local function stopAntiAFK()
     end
 end
 
--- ===== CACHED UI FUNCTIONS (NO LAG) =====
-local function updateUICache()
-    local currentTime = tick()
-    if currentTime - lastUICheck < uiCheckInterval then
-        return
-    end
+-- ===== CLICK & KEY FUNCTIONS =====
+local function getClickPosition()
+    local fishingRodGUI = playerGui:FindFirstChild("FishingRodGUI")
     
-    lastUICheck = currentTime
-    
-    -- Cache FishingRodGUI
-    if not fishingRodGUI or not fishingRodGUI.Parent then
-        fishingRodGUI = playerGui:FindFirstChild("FishingRodGUI")
-        if fishingRodGUI then
-            local background = fishingRodGUI:FindFirstChild("Background")
-            if background then
-                imageLabel = background:FindFirstChild("ImageLabel")
+    if fishingRodGUI then
+        local background = fishingRodGUI:FindFirstChild("Background")
+        if background then
+            local imageLabel = background:FindFirstChild("ImageLabel")
+            if imageLabel then
+                local absolutePos = imageLabel.AbsolutePosition
+                local absoluteSize = imageLabel.AbsoluteSize
+                
+                local clickX = absolutePos.X + (absoluteSize.X / 2)
+                local clickY = absolutePos.Y + absoluteSize.Y + 30
+                
+                return clickX, clickY
             end
         end
     end
     
-    -- Cache MiniGameGUI
-    if not miniGameGUI or not miniGameGUI.Parent then
-        miniGameGUI = playerGui:FindFirstChild("MiniGameGUI")
-    end
-end
-
-local function getClickPosition()
-    if imageLabel and imageLabel.Parent and imageLabel.Visible then
-        local absolutePos = imageLabel.AbsolutePosition
-        local absoluteSize = imageLabel.AbsoluteSize
-        
-        local clickX = absolutePos.X + (absoluteSize.X / 2)
-        local clickY = absolutePos.Y + absoluteSize.Y + 30
-        
-        return clickX, clickY
-    end
-    
-    -- Fallback
     local center = workspace.CurrentCamera.ViewportSize / 2
     return center.X, center.Y
 end
 
--- ===== FISHING FUNCTIONS (NO LAG) =====
 local function holdClick(duration)
     local clickX, clickY = getClickPosition()
     
@@ -346,101 +349,86 @@ local function holdClick(duration)
     VirtualInputManager:SendMouseButtonEvent(clickX, clickY, 0, false, game, 0)
 end
 
-local function castFishingRod()
-    if isCasting then return end
-    
-    task.spawn(function() -- Async cast untuk tidak block
-        isCasting = true
-        holdClick(config.castHoldTime)
-        lastCastTime = tick()
-        isCasting = false
-    end)
+local function pressKey(keyCode)
+    VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
+    task.wait(0.01)
+    VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
 end
 
-local function quickTap()
-    local clickX, clickY = getClickPosition()
-    
-    VirtualInputManager:SendMouseButtonEvent(clickX, clickY, 0, true, game, 0)
-    VirtualInputManager:SendMouseButtonEvent(clickX, clickY, 0, false, game, 0)
-end
-
-local function detectMinigame()
-    if miniGameGUI and miniGameGUI.Parent then
-        local bg = miniGameGUI:FindFirstChild("Background")
-        if bg then
-            local filler = bg:FindFirstChild("Filler")
-            return filler ~= nil, filler
-        end
+-- ===== MINIGAME DETECTION =====
+local function isMiniGameActive()
+    local miniGameGUI = playerGui:FindFirstChild("MiniGameGUI")
+    if miniGameGUI and miniGameGUI:IsA("ScreenGui") then
+        return miniGameGUI.Enabled == true
     end
-    return false, nil
+    return false
 end
 
--- ===== OPTIMIZED AUTO CLICK (NO LAG) =====
-local clickCount = 0
-local maxClicksPerFrame = 1 -- Limit clicks per frame
-
-local function startAutoClick()
-    if clickConnection then clickConnection:Disconnect() end
+-- ===== MAIN FISHING LOOP =====
+local function startFSpamLoop()
+    if fSpamLoop then
+        fSpamLoop:Disconnect()
+    end
     
-    clickConnection = RunService.Heartbeat:Connect(function()
-        if not config.enabled or isCasting then return end
+    fSpamLoop = RunService.RenderStepped:Connect(function()
+        if not config.enabled then return end
         
-        -- Update UI cache periodically
-        updateUICache()
+        local inMinigame = isMiniGameActive()
+        local currentTime = tick()
         
-        local active, filler = detectMinigame()
-        
-        if wasMinigameActive and not active then
-            fishCaught = fishCaught + 1
+        -- Detect minigame START
+        if inMinigame and not wasInMinigame then
+            fPressCount = 0
+            isMinigameActive = true
         end
         
-        wasMinigameActive = active
-        isMinigameActive = active
+        -- Detect minigame END
+        if not inMinigame and wasInMinigame then
+            fishCaught = fishCaught + 1
+            isMinigameActive = false
+            fPressCount = 0
+            lastActionTime = currentTime
+        end
         
-        if active and filler then
-            -- Limit clicks per frame untuk avoid lag
-            if clickCount >= maxClicksPerFrame then
-                clickCount = 0
-                return
-            end
+        wasInMinigame = inMinigame
+        
+        if inMinigame then
+            -- SPAM F during minigame
+            pressKey(Enum.KeyCode.F)
+            fPressCount = fPressCount + 1
             
-            if config.autoWinMode then
-                if filler.Size.X.Scale < 0.99 then
-                    filler.Size = UDim2.new(0.99, 0, 1, 0)
-                    quickTap()
-                    clickCount = clickCount + 1
-                end
+            if config.ultraFastMode then
+                task.wait(config.fSpamSpeedFast)
             else
-                if filler.Size.X.Scale < 1 then
-                    quickTap()
-                    clickCount = clickCount + 1
-                end
+                task.wait(config.fSpamSpeed)
             end
         else
-            clickCount = 0
-        end
-    end)
-end
-
-local function monitorRecast()
-    task.spawn(function()
-        while config.enabled do
-            task.wait(1)
-            
-            if not isMinigameActive and not isCasting then
-                local active = detectMinigame()
-                if not active then
-                    local timeSinceCast = tick() - lastCastTime
-                    
-                    if timeSinceCast >= 1.2 then
-                        castFishingRod()
-                    end
-                end
+            -- NO MINIGAME = CAST IMMEDIATELY!
+            if not isCasting and currentTime - lastActionTime >= 0.3 then
+                isCasting = true
+                
+                task.spawn(function()
+                    holdClick(config.castHoldTime)
+                    lastCastTime = tick()
+                    task.wait(0.2)
+                    isCasting = false
+                end)
+                
+                lastActionTime = currentTime
             end
         end
     end)
 end
 
+local function stopFSpamLoop()
+    if fSpamLoop then
+        fSpamLoop:Disconnect()
+        fSpamLoop = nil
+    end
+    isMinigameActive = false
+end
+
+-- ===== WEBHOOK UPDATE LOOP =====
 local function updateLoop()
     task.spawn(function()
         while config.enabled do
@@ -455,7 +443,11 @@ end
 
 -- ===== UTILITY FUNCTIONS =====
 local function getFPS()
-    return 60 -- Return static untuk avoid calculation lag
+    local fps = 0
+    pcall(function()
+        fps = math.floor(1 / RunService.Heartbeat:Wait())
+    end)
+    return fps
 end
 
 local function getPing()
@@ -481,14 +473,10 @@ local function toggleScript()
         fishCaught = 0
         startTime = tick()
         stoppedTime = 0
+        fPressCount = 0
+        wasInMinigame = false
         lastWebhookUpdate = tick()
         sessionStart = os.date("%Y-%m-%d %H:%M:%S")
-        
-        -- Reset cache
-        fishingRodGUI = nil
-        miniGameGUI = nil
-        imageLabel = nil
-        lastUICheck = 0
         
         if toggleBtn then
             toggleBtn.BackgroundColor3 = Color3.fromRGB(50, 220, 50)
@@ -496,13 +484,10 @@ local function toggleScript()
         end
         
         sendStartMessage()
-        updateUICache()
-        startAutoClick()
-        monitorRecast()
+        startFSpamLoop()
         startAntiAFK()
         updateLoop()
-        task.wait(0.2)
-        castFishingRod()
+        
     else
         stoppedTime = math.floor(tick() - startTime)
         
@@ -512,12 +497,12 @@ local function toggleScript()
         end
         
         sendStopMessage()
-        if clickConnection then clickConnection:Disconnect() end
+        stopFSpamLoop()
         stopAntiAFK()
     end
 end
 
--- ===== GUI =====
+-- ===== BEAUTIFUL GUI =====
 local function createGUI()
     local oldGui = playerGui:FindFirstChild("AutoFishGUI")
     if oldGui then oldGui:Destroy() end
@@ -529,8 +514,8 @@ local function createGUI()
     sg.Parent = playerGui
     
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 240, 0, 240)
-    frame.Position = UDim2.new(0.5, -120, 0, 80)
+    frame.Size = UDim2.new(0, 260, 0, 270)
+    frame.Position = UDim2.new(0.5, -130, 0, 80)
     frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
     frame.BorderSizePixel = 0
     frame.Active = true
@@ -538,17 +523,30 @@ local function createGUI()
     frame.Parent = sg
     
     local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 10)
+    corner.CornerRadius = UDim.new(0, 12)
     corner.Parent = frame
     
+    -- Glow Effect
+    local glow = Instance.new("ImageLabel")
+    glow.Size = UDim2.new(1, 40, 1, 40)
+    glow.Position = UDim2.new(0.5, 0, 0.5, 0)
+    glow.AnchorPoint = Vector2.new(0.5, 0.5)
+    glow.BackgroundTransparency = 1
+    glow.Image = "rbxasset://textures/ui/Glow.png"
+    glow.ImageColor3 = Color3.fromRGB(0, 200, 255)
+    glow.ImageTransparency = 0.7
+    glow.ZIndex = 0
+    glow.Parent = frame
+    
+    -- Title
     local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(1, -50, 0, 35)
+    title.Size = UDim2.new(1, -50, 0, 40)
     title.Position = UDim2.new(0, 0, 0, 0)
-    title.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
+    title.BackgroundColor3 = Color3.fromRGB(0, 180, 255)
     title.BorderSizePixel = 0
-    title.Text = "Auto Fishing"
+    title.Text = "🎣 Auto Fishing"
     title.Font = Enum.Font.GothamBold
-    title.TextSize = 15
+    title.TextSize = 16
     title.TextColor3 = Color3.new(1, 1, 1)
     title.TextXAlignment = Enum.TextXAlignment.Center
     title.TextYAlignment = Enum.TextYAlignment.Center
@@ -556,84 +554,117 @@ local function createGUI()
     title.Parent = frame
     
     local titleCorner = Instance.new("UICorner")
-    titleCorner.CornerRadius = UDim.new(0, 10)
+    titleCorner.CornerRadius = UDim.new(0, 12)
     titleCorner.Parent = title
     
+    -- Gradient for title
+    local gradient = Instance.new("UIGradient")
+    gradient.Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 200, 255)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 150, 255))
+    }
+    gradient.Rotation = 45
+    gradient.Parent = title
+    
+    -- Close Button
     local closeBtn = Instance.new("TextButton")
-    closeBtn.Size = UDim2.new(0, 30, 0, 30)
-    closeBtn.Position = UDim2.new(1, -35, 0, 2.5)
+    closeBtn.Size = UDim2.new(0, 35, 0, 35)
+    closeBtn.Position = UDim2.new(1, -37, 0, 2.5)
     closeBtn.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
     closeBtn.BorderSizePixel = 0
-    closeBtn.Text = "X"
+    closeBtn.Text = "✕"
     closeBtn.Font = Enum.Font.GothamBold
-    closeBtn.TextSize = 14
+    closeBtn.TextSize = 18
     closeBtn.TextColor3 = Color3.new(1, 1, 1)
     closeBtn.AutoButtonColor = true
     closeBtn.Parent = frame
     
     local closeCorner = Instance.new("UICorner")
-    closeCorner.CornerRadius = UDim.new(0, 6)
+    closeCorner.CornerRadius = UDim.new(0, 8)
     closeCorner.Parent = closeBtn
     
+    -- Toggle Button
     toggleBtn = Instance.new("TextButton")
-    toggleBtn.Size = UDim2.new(0.9, 0, 0, 40)
-    toggleBtn.Position = UDim2.new(0.05, 0, 0, 45)
+    toggleBtn.Size = UDim2.new(0.9, 0, 0, 45)
+    toggleBtn.Position = UDim2.new(0.05, 0, 0, 50)
     toggleBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
     toggleBtn.BorderSizePixel = 0
     toggleBtn.Text = "START"
     toggleBtn.Font = Enum.Font.GothamBold
-    toggleBtn.TextSize = 14
+    toggleBtn.TextSize = 16
     toggleBtn.TextColor3 = Color3.new(1, 1, 1)
     toggleBtn.AutoButtonColor = true
     toggleBtn.Parent = frame
     
     local toggleCorner = Instance.new("UICorner")
-    toggleCorner.CornerRadius = UDim.new(0, 8)
+    toggleCorner.CornerRadius = UDim.new(0, 10)
     toggleCorner.Parent = toggleBtn
     
-    local modeBtn = Instance.new("TextButton")
-    modeBtn.Size = UDim2.new(0.9, 0, 0, 30)
-    modeBtn.Position = UDim2.new(0.05, 0, 0, 95)
+    -- Toggle gradient
+    local toggleGradient = Instance.new("UIGradient")
+    toggleGradient.Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 70, 70)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(200, 40, 40))
+    }
+    toggleGradient.Rotation = 90
+    toggleGradient.Parent = toggleBtn
+    
+    -- Mode Button
+    modeBtn = Instance.new("TextButton")
+    modeBtn.Size = UDim2.new(0.9, 0, 0, 40)
+    modeBtn.Position = UDim2.new(0.05, 0, 0, 105)
     modeBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 255)
     modeBtn.BorderSizePixel = 0
-    modeBtn.Text = "Mode: Tap-Tap"
+    modeBtn.Text = "⌨️ Speed: Normal (66/s)"
     modeBtn.Font = Enum.Font.GothamBold
-    modeBtn.TextSize = 12
+    modeBtn.TextSize = 14
     modeBtn.TextColor3 = Color3.new(1, 1, 1)
     modeBtn.AutoButtonColor = true
     modeBtn.Parent = frame
     
     local modeCorner = Instance.new("UICorner")
-    modeCorner.CornerRadius = UDim.new(0, 6)
+    modeCorner.CornerRadius = UDim.new(0, 10)
     modeCorner.Parent = modeBtn
     
+    -- Mode gradient
+    local modeGradient = Instance.new("UIGradient")
+    modeGradient.Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(120, 120, 255)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(80, 80, 200))
+    }
+    modeGradient.Rotation = 90
+    modeGradient.Parent = modeBtn
+    
+    -- Stats Display
     statsLabel = Instance.new("TextLabel")
-    statsLabel.Size = UDim2.new(0.9, 0, 0, 90)
-    statsLabel.Position = UDim2.new(0.05, 0, 0, 135)
-    statsLabel.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    statsLabel.BorderSizePixel = 0
-    statsLabel.Text = "Fish: 0\nTime: 00:00:00\nPing: 0ms"
+    statsLabel.Size = UDim2.new(0.9, 0, 0, 100)
+    statsLabel.Position = UDim2.new(0.05, 0, 0, 155)
+    statsLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    statsLabel.BorderSizePixel = 2
+    statsLabel.BorderColor3 = Color3.fromRGB(0, 180, 255)
+    statsLabel.Text = "🐟 Fish: 0\n⏱️ Time: 00:00:00\n📊 FPS: 0\n📡 Ping: 0ms"
     statsLabel.Font = Enum.Font.GothamBold
-    statsLabel.TextSize = 12
-    statsLabel.TextColor3 = Color3.fromRGB(0, 255, 150)
+    statsLabel.TextSize = 14
+    statsLabel.TextColor3 = Color3.new(1, 1, 1)
     statsLabel.TextXAlignment = Enum.TextXAlignment.Left
     statsLabel.TextYAlignment = Enum.TextYAlignment.Top
     statsLabel.Parent = frame
     
     local statsPadding = Instance.new("UIPadding")
-    statsPadding.PaddingLeft = UDim.new(0, 10)
-    statsPadding.PaddingTop = UDim.new(0, 8)
+    statsPadding.PaddingLeft = UDim.new(0, 12)
+    statsPadding.PaddingTop = UDim.new(0, 10)
     statsPadding.Parent = statsLabel
     
     local statsCorner = Instance.new("UICorner")
-    statsCorner.CornerRadius = UDim.new(0, 8)
+    statsCorner.CornerRadius = UDim.new(0, 10)
     statsCorner.Parent = statsLabel
     
-    -- Update Stats Loop (Optimized)
+    -- Update Stats Loop
     task.spawn(function()
         while statsLabel and statsLabel.Parent do
-            task.wait(2) -- Update setiap 2 detik untuk mengurangi lag
+            task.wait(0.5)
             
+            local currentFPS = getFPS()
             local currentPing = getPing()
             local uptime = 0
             
@@ -645,36 +676,101 @@ local function createGUI()
             
             local timeStr = formatTime(uptime)
             
+            -- Dynamic status indicator
+            local statusEmoji = "⏸️"
+            local statusText = "Stopped"
+            
+            if isMinigameActive then
+                if config.ultraFastMode then
+                    statusEmoji = "⚡"
+                    statusText = "Ultra Fast!"
+                else
+                    statusEmoji = "⌨️"
+                    statusText = "F-Spamming"
+                end
+            elseif config.enabled then
+                statusEmoji = "🎣"
+                statusText = "Fishing..."
+            end
+            
             statsLabel.Text = string.format(
-                "Fish: %d\nTime: %s\nPing: %dms",
+                "%s Status: %s\n🐟 Fish: %d\n⏱️ Time: %s\n📊 FPS: %d | 📡 Ping: %dms",
+                statusEmoji,
+                statusText,
                 fishCaught,
                 timeStr,
+                currentFPS,
                 currentPing
             )
+            
+            -- Change stats color when active
+            if isMinigameActive then
+                if config.ultraFastMode then
+                    statsLabel.TextColor3 = Color3.fromRGB(255, 200, 0)
+                    statsLabel.BorderColor3 = Color3.fromRGB(255, 200, 0)
+                else
+                    statsLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
+                    statsLabel.BorderColor3 = Color3.fromRGB(100, 255, 100)
+                end
+            elseif config.enabled then
+                statsLabel.TextColor3 = Color3.fromRGB(0, 200, 255)
+                statsLabel.BorderColor3 = Color3.fromRGB(0, 200, 255)
+            else
+                statsLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+                statsLabel.BorderColor3 = Color3.fromRGB(0, 180, 255)
+            end
         end
     end)
     
+    -- Button Functions
     toggleBtn.MouseButton1Click:Connect(function()
         toggleScript()
+        
+        -- Update button gradient on toggle
+        if config.enabled then
+            toggleGradient.Color = ColorSequence.new{
+                ColorSequenceKeypoint.new(0, Color3.fromRGB(70, 255, 70)),
+                ColorSequenceKeypoint.new(1, Color3.fromRGB(40, 200, 40))
+            }
+        else
+            toggleGradient.Color = ColorSequence.new{
+                ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 70, 70)),
+                ColorSequenceKeypoint.new(1, Color3.fromRGB(200, 40, 40))
+            }
+        end
     end)
     
     modeBtn.MouseButton1Click:Connect(function()
-        config.autoWinMode = not config.autoWinMode
-        if config.autoWinMode then
-            modeBtn.Text = "Mode: Auto Win"
-            modeBtn.BackgroundColor3 = Color3.fromRGB(255, 100, 0)
+        config.ultraFastMode = not config.ultraFastMode
+        
+        if config.ultraFastMode then
+            modeBtn.Text = "⚡ Speed: ULTRA (200/s)"
+            modeGradient.Color = ColorSequence.new{
+                ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 180, 0)),
+                ColorSequenceKeypoint.new(1, Color3.fromRGB(200, 120, 0))
+            }
         else
-            modeBtn.Text = "Mode: Tap-Tap"
-            modeBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 255)
+            modeBtn.Text = "⌨️ Speed: Normal (66/s)"
+            modeGradient.Color = ColorSequence.new{
+                ColorSequenceKeypoint.new(0, Color3.fromRGB(120, 120, 255)),
+                ColorSequenceKeypoint.new(1, Color3.fromRGB(80, 80, 200))
+            }
         end
+        
+        -- Send webhook notification
+        sendSpeedChange()
+        
+        -- Restart loop with new speed if running
         if config.enabled then
-            sendModeChange()
+            stopFSpamLoop()
+            task.wait(0.1)
+            startFSpamLoop()
         end
     end)
     
     closeBtn.MouseButton1Click:Connect(function()
         config.enabled = false
-        if clickConnection then clickConnection:Disconnect() end
+        stopFSpamLoop()
         stopAntiAFK()
         sg:Destroy()
     end)
@@ -719,50 +815,44 @@ local function createGUI()
         end
     end)
     
+    -- Hotkey J (Start/Stop)
+    UserInputService.InputBegan:Connect(function(input, gpe)
+        if gpe then return end
+        if input.KeyCode == Enum.KeyCode.J then
+            toggleScript()
+        end
+    end)
+    
+    -- Hotkey K (Hide/Show GUI)
+    UserInputService.InputBegan:Connect(function(input, gpe)
+        if gpe then return end
+        if input.KeyCode == Enum.KeyCode.K then
+            frame.Visible = not frame.Visible
+        end
+    end)
+    
     return sg
 end
-
--- ===== HOTKEYS =====
-UserInputService.InputBegan:Connect(function(input, gpe)
-    if gpe then return end
-    
-    if input.KeyCode == Enum.KeyCode.J then
-        local gui = playerGui:FindFirstChild("AutoFishGUI")
-        if gui then
-            local frame = gui:FindFirstChild("Frame")
-            if frame then
-                frame.Visible = not frame.Visible
-            end
-        end
-    elseif input.KeyCode == Enum.KeyCode.K then
-        toggleScript()
-    end
-end)
 
 -- ===== INITIALIZE =====
 task.spawn(function()
     findAFKRemote()
 end)
 
-local function sendAttachMessage()
-    local currentTime = os.date("%Y-%m-%d %H:%M:%S")
-    
-    local fields = {
-        {name = "👤 Player", value = "```" .. player.Name .. "```", inline = true},
-        {name = "🕐 Waktu Attach", value = "```" .. currentTime .. "```", inline = true},
-        {name = "⚡ Kontrol", value = "```J = Toggle GUI\nK = Start/Stop```", inline = false},
-        {name = "📋 Status", value = "```yaml\nScript berhasil di-attach\nSiap digunakan```", inline = false}
-    }
-    
-    sendWebhook(
-        "🤖 Script Attached Successfully",
-        "**Auto Fishing Script telah di-attach ke executor!**\nGUI sudah muncul, tekan **K** untuk memulai bot.",
-        5763719,
-        fields
-    )
+task.wait(0.5)
+
+local success, err = pcall(function()
+    local gui = createGUI()
+    _G[scriptIdentifier] = gui
+end)
+
+if not success then
+    task.wait(1)
+    pcall(function()
+        local gui = createGUI()
+        _G[scriptIdentifier] = gui
+    end)
 end
 
-task.wait(0.5)
-pcall(createGUI)
 task.wait(2)
 sendAttachMessage()
