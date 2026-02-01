@@ -14,7 +14,7 @@ local mouse = player:GetMouse()
 local MineEvent = ReplicatedStorage:WaitForChild("MineEvent")
 
 -- WEBHOOK CONFIGURATION
-local WEBHOOK_URL = "https://discord.com/api/webhooks/YOUR_WEBHOOK_URL_HERE"
+local WEBHOOK_URL = "https://discord.com/api/webhooks/1464754456523706629/U2tO9FBgF827mZYjkdxPEx_NXIgi3AtdLdF40TKJ63xUB8QU568Tet5yK5o8I6EV46cV"
 local SEND_WEBHOOK = true -- Set false untuk disable webhook
 
 -- State
