@@ -1,16 +1,21 @@
 -- Auto Mine | Velocity Executor Compatible
--- Tidak butuh script.Parent / Animations folder
+-- Features: Webhook, Draggable GUI, Center Position
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local HttpService = game:GetService("HttpService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 local mouse = player:GetMouse()
 
 local MineEvent = ReplicatedStorage:WaitForChild("MineEvent")
+
+-- WEBHOOK CONFIGURATION
+local WEBHOOK_URL = "https://discord.com/api/webhooks/YOUR_WEBHOOK_URL_HERE"
+local SEND_WEBHOOK = true -- Set false untuk disable webhook
 
 -- State
 local character, humanoid, rootPart
@@ -20,6 +25,61 @@ local isMining = false
 local mineCount = 0
 local autoMineEnabled = false
 local m1Track, minedTrack, dapetTrack = nil, nil, nil
+
+-- Stats
+local totalMined = 0
+local sessionStartTime = tick()
+
+--------------------------------------------------
+-- WEBHOOK FUNCTION
+--------------------------------------------------
+local function sendWebhook(message, color)
+	if not SEND_WEBHOOK or WEBHOOK_URL == "https://discord.com/api/webhooks/YOUR_WEBHOOK_URL_HERE" then
+		return
+	end
+	
+	local success, err = pcall(function()
+		local data = {
+			["embeds"] = {{
+				["title"] = "⛏️ Auto Mine Notification",
+				["description"] = message,
+				["color"] = color or 3447003,
+				["fields"] = {
+					{
+						["name"] = "Player",
+						["value"] = player.Name,
+						["inline"] = true
+					},
+					{
+						["name"] = "Total Mined",
+						["value"] = tostring(totalMined),
+						["inline"] = true
+					},
+					{
+						["name"] = "Session Time",
+						["value"] = string.format("%.1f min", (tick() - sessionStartTime) / 60),
+						["inline"] = true
+					}
+				},
+				["timestamp"] = os.date("!%Y-%m-%dT%H:%M:%S")
+			}}
+		}
+		
+		local jsonData = HttpService:JSONEncode(data)
+		request({
+			Url = WEBHOOK_URL,
+			Method = "POST",
+			Headers = {
+				["Content-Type"] = "application/json"
+			},
+			Body = jsonData
+		})
+	end)
+	
+	if not success then
+		warn("Webhook error:", err)
+	end
+end
 
 --------------------------------------------------
 -- FIND TOOL (dynamically detect equipped tool)
@@ -66,11 +126,11 @@ screenGui.Name = "AutoMineGui"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = playerGui
 
--- Main Frame
+-- Main Frame (POSISI TENGAH)
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
-mainFrame.Size = UDim2.new(0, 180, 0, 100)
-mainFrame.Position = UDim2.new(0, 12, 1, -115)
+mainFrame.Size = UDim2.new(0, 220, 0, 140)
+mainFrame.Position = UDim2.new(0.5, -110, 0.5, -70) -- Tengah layar
 mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
 mainFrame.BorderSizePixel = 0
 mainFrame.Visible = false
@@ -85,15 +145,16 @@ stroke.Color = Color3.fromRGB(60, 60, 70)
 stroke.Thickness = 1
 stroke.Parent = mainFrame
 
--- Title
+-- Title (DRAG HANDLE)
 local titleLabel = Instance.new("TextLabel")
-titleLabel.Size = UDim2.new(1, 0, 0, 28)
+titleLabel.Name = "TitleLabel"
+titleLabel.Size = UDim2.new(1, 0, 0, 32)
 titleLabel.Position = UDim2.new(0, 0, 0, 0)
 titleLabel.BackgroundColor3 = Color3.fromRGB(40, 40, 48)
 titleLabel.BorderSizePixel = 0
 titleLabel.Text = "⛏  AUTO MINE"
 titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-titleLabel.TextScaled = true
+titleLabel.TextSize = 14
 titleLabel.Font = Enum.Font.GothamBold
 titleLabel.TextXAlignment = Enum.TextXAlignment.Left
 titleLabel.Parent = mainFrame
@@ -106,16 +167,28 @@ local titlePadding = Instance.new("UIPadding")
 titlePadding.PaddingLeft = UDim.new(0, 10)
 titlePadding.Parent = titleLabel
 
+-- Stats Label
+local statsLabel = Instance.new("TextLabel")
+statsLabel.Size = UDim2.new(1, -20, 0, 20)
+statsLabel.Position = UDim2.new(0, 10, 0, 40)
+statsLabel.BackgroundTransparency = 1
+statsLabel.Text = "Mined: 0"
+statsLabel.TextColor3 = Color3.fromRGB(255, 200, 100)
+statsLabel.TextSize = 12
+statsLabel.Font = Enum.Font.GothamBold
+statsLabel.TextXAlignment = Enum.TextXAlignment.Left
+statsLabel.Parent = mainFrame
+
 -- Toggle Button
 local toggleButton = Instance.new("TextButton")
-toggleButton.Size = UDim2.new(0, 140, 0, 30)
-toggleButton.Position = UDim2.new(0.5, 0, 0.5, 4)
-toggleButton.AnchorPoint = Vector2.new(0.5, 0.5)
+toggleButton.Size = UDim2.new(0, 180, 0, 35)
+toggleButton.Position = UDim2.new(0.5, 0, 0, 68)
+toggleButton.AnchorPoint = Vector2.new(0.5, 0)
 toggleButton.BackgroundColor3 = Color3.fromRGB(80, 80, 90)
 toggleButton.BorderSizePixel = 0
 toggleButton.Text = "START"
 toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-toggleButton.TextScaled = true
+toggleButton.TextSize = 14
 toggleButton.Font = Enum.Font.GothamBold
 toggleButton.Parent = mainFrame
 
@@ -130,10 +203,48 @@ statusLabel.Position = UDim2.new(0, 10, 1, -22)
 statusLabel.BackgroundTransparency = 1
 statusLabel.Text = "Status: Idle"
 statusLabel.TextColor3 = Color3.fromRGB(140, 140, 150)
-statusLabel.TextScaled = true
+statusLabel.TextSize = 11
 statusLabel.Font = Enum.Font.Gotham
 statusLabel.TextXAlignment = Enum.TextXAlignment.Left
 statusLabel.Parent = mainFrame
+
+--------------------------------------------------
+-- DRAGGABLE GUI
+--------------------------------------------------
+local dragging = false
+local dragInput, mousePos, framePos
+
+titleLabel.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragging = true
+		mousePos = input.Position
+		framePos = mainFrame.Position
+		
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then
+				dragging = false
+			end
+		end)
+	end
+end)
+
+titleLabel.InputChanged:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseMovement then
+		dragInput = input
+	end
+end)
+
+RunService.Heartbeat:Connect(function()
+	if dragging and dragInput then
+		local delta = dragInput.Position - mousePos
+		mainFrame.Position = UDim2.new(
+			framePos.X.Scale,
+			framePos.X.Offset + delta.X,
+			framePos.Y.Scale,
+			framePos.Y.Offset + delta.Y
+		)
+	end
+end)
 
 --------------------------------------------------
 -- GUI LOGIC
@@ -156,6 +267,8 @@ local function updateGui()
 		statusLabel.Text = "Status: Idle"
 		statusLabel.TextColor3 = COLOR_STATUS_OFF
 	end
+	
+	statsLabel.Text = string.format("Mined: %d | Time: %.1fm", totalMined, (tick() - sessionStartTime) / 60)
 end
 
 toggleButton.MouseEnter:Connect(function()
@@ -171,6 +284,13 @@ end)
 toggleButton.Activated:Connect(function()
 	autoMineEnabled = not autoMineEnabled
 	mineCount = 0
+	
+	if autoMineEnabled then
+		sendWebhook("✅ Auto Mine **STARTED**", 3066993) -- Green
+	else
+		sendWebhook("⏸️ Auto Mine **STOPPED**", 15158332) -- Red
+	end
+	
 	updateGui()
 end)
 
@@ -187,6 +307,7 @@ local function setupCharacter(char)
 	mainFrame.Visible = false
 	autoMineEnabled = false
 	mineCount = 0
+	sessionStartTime = tick()
 	updateGui()
 end
 
@@ -198,8 +319,6 @@ player.CharacterAdded:Connect(setupCharacter)
 
 --------------------------------------------------
 -- DETECT TOOL EQUIPPED / UNEQUIPPED
--- (Executor tidak bisa pakai script.Parent.Equipped)
--- Gunakan ChildAdded / ChildRemoved pada Character
 --------------------------------------------------
 local function onChildAdded(child)
 	if child:IsA("Tool") then
@@ -209,6 +328,7 @@ local function onChildAdded(child)
 		mainFrame.Visible = true
 		loadAnimations(child)
 		updateGui()
+		sendWebhook(string.format("🔧 Tool **%s** equipped", child.Name), 3447003) -- Blue
 	end
 end
 
@@ -265,6 +385,9 @@ end
 --------------------------------------------------
 -- AUTO MINE LOOP
 --------------------------------------------------
+local lastWebhookUpdate = tick()
+local WEBHOOK_INTERVAL = 300 -- Send update every 5 minutes
+
 RunService.Heartbeat:Connect(function()
 	if not isEquipped or not autoMineEnabled or isMining then return end
 	if not (character and humanoid and rootPart) then return end
@@ -290,11 +413,31 @@ RunService.Heartbeat:Connect(function()
 	if mineCount >= 8 then
 		MineEvent:FireServer(block)
 		mineCount = 0
+		totalMined = totalMined + 1
+		
 		if dapetTrack then dapetTrack:Play() end
+		
+		-- Update GUI
+		updateGui()
+		
+		-- Send periodic webhook updates
+		if tick() - lastWebhookUpdate >= WEBHOOK_INTERVAL then
+			sendWebhook(string.format("📊 Mining update: **%d blocks** mined", totalMined), 15844367) -- Gold
+			lastWebhookUpdate = tick()
+		end
+		
+		-- Send milestone webhooks
+		if totalMined % 50 == 0 then
+			sendWebhook(string.format("🎉 Milestone reached: **%d blocks** mined!", totalMined), 10181046) -- Purple
+		end
 	end
 
 	task.wait(1)
 	isMining = false
 end)
 
+-- Send initial webhook
+sendWebhook("🚀 Auto Mine script **LOADED**", 3447003)
 print("✅ Auto Mine loaded | Equip tool & press START")
+print("📍 GUI positioned at center - Drag from title to move")
+print("🌐 Webhook configured:", SEND_WEBHOOK)
